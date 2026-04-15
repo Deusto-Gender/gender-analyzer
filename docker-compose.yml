@@ -1,0 +1,120 @@
+version: "3.9"
+
+services:
+
+  # ── Wikipedia Extractor ──────────────────────────────────────────────────────
+  wikipedia-extractor:
+    build:
+      context: ./services/wikipedia-extractor
+      dockerfile: Dockerfile
+    container_name: wba-wikipedia-extractor
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - wiki-cache:/app/cache
+    networks:
+      - wba-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── NLP Analyzer ────────────────────────────────────────────────────────────
+  nlp-analyzer:
+    build:
+      context: ./services/nlp-analyzer
+      dockerfile: Dockerfile
+    container_name: wba-nlp-analyzer
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    networks:
+      - wba-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+  # ── LLM Auditor ─────────────────────────────────────────────────────────────
+  llm-auditor:
+    build:
+      context: ./services/llm-auditor
+      dockerfile: Dockerfile
+    container_name: wba-llm-auditor
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    networks:
+      - wba-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── API Gateway / Orchestrator ───────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: wba-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - WIKI_SERVICE_URL=http://wikipedia-extractor:8001
+      - NLP_SERVICE_URL=http://nlp-analyzer:8002
+      - LLM_SERVICE_URL=http://llm-auditor:8003
+    volumes:
+      - results-data:/app/data
+    networks:
+      - wba-network
+    depends_on:
+      wikipedia-extractor:
+        condition: service_healthy
+      nlp-analyzer:
+        condition: service_healthy
+      llm-auditor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Frontend Dashboard ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: wba-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - API_GATEWAY_URL=http://localhost:8000
+    networks:
+      - wba-network
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+
+volumes:
+  wiki-cache:
+    name: wba-wiki-cache
+  results-data:
+    name: wba-results-data
+
+networks:
+  wba-network:
+    name: wba-network
+    driver: bridge
