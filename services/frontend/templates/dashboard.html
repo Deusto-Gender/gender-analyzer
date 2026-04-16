@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wikipedia Bias Analyzer v6</title>
+<link rel="stylesheet" href="/static/styles.css">
+<!-- Chart.js from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Inject API URL as a config variable so JS file can read it -->
+<script>window.WBA_CONFIG = { apiUrl: '{{ api_gateway_url }}' };</script>
+</head>
+<body>
+
+<header>
+  <div class="icon">🔬</div>
+  <div>
+    <h1>Wikipedia Bias Analyzer v6</h1>
+    <p>Sesgos de género · Premio Ada Byron · configuración en <code>config/</code></p>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('dashboard',this)">📊 Dashboard</button>
+  <button onclick="showTab('aggregate',this)">📈 Gráficos Agregados</button>
+  <button onclick="showTab('pairs',this)">👥 Pares</button>
+  <button onclick="showTab('nlp',this)">🔤 NLP</button>
+  <button onclick="showTab('audit',this)">🤖 Auditoría LLM</button>
+  <button onclick="showTab('config',this)">⚙️ Config</button>
+</nav>
+
+<!-- ══ MODAL ══════════════════════════════════════════════════════════════════ -->
+<div id="modal-overlay" class="modal-overlay" onclick="closeModalOnOverlay(event)">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Comparación de textos — Par #<span id="m-pair-id"></span></div>
+        <div class="modal-area" id="m-area"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()" title="Cerrar (Esc)">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchModalTab('texts',this)">📄 Textos</button>
+      <button class="modal-tab" onclick="switchModalTab('stats',this)">📊 Estadísticas</button>
+      <button class="modal-tab" onclick="switchModalTab('diag',this)">🔍 Diagnóstico LLM</button>
+    </div>
+
+    <!-- Texts tab -->
+    <div class="modal-body" id="mtab-texts">
+      <div class="search-bar">
+        <input type="text" id="search-term" placeholder="🔍 Buscar término en los 4 textos..." oninput="highlightSearch()">
+        <button class="btn btn-outline" onclick="clearSearch()" style="padding:7px 12px">✕</button>
+      </div>
+      <div class="modal-section-label">Wikipedia — textos originales</div>
+      <div class="text-grid">
+        <div class="text-panel">
+          <div class="text-panel-header">
+            <span class="tp-badge tp-wiki-w">Wikipedia ♀</span>
+            <span class="text-panel-name w-name" id="m-wname-wiki"></span>
+            <span class="text-panel-meta" id="m-wmeta"></span>
+          </div>
+          <div class="text-panel-body" id="m-wtext"></div>
+        </div>
+        <div class="text-panel">
+          <div class="text-panel-header">
+            <span class="tp-badge tp-wiki-m">Wikipedia ♂</span>
+            <span class="text-panel-name m-name" id="m-mname-wiki"></span>
+            <span class="text-panel-meta" id="m-mmeta"></span>
+          </div>
+          <div class="text-panel-body" id="m-mtext"></div>
+        </div>
+      </div>
+      <div class="modal-section-label" style="margin-top:20px">IA generativa — biografías sin instrucciones de neutralidad (salida por defecto)</div>
+      <div class="text-grid">
+        <div class="text-panel">
+          <div class="text-panel-header">
+            <span class="tp-badge tp-ai-w">IA ♀</span>
+            <span class="text-panel-name w-name" id="m-wname-ai"></span>
+            <span class="text-panel-meta">generado por Claude Sonnet</span>
+          </div>
+          <div class="text-panel-body" id="m-wtext-ai"></div>
+        </div>
+        <div class="text-panel">
+          <div class="text-panel-header">
+            <span class="tp-badge tp-ai-m">IA ♂</span>
+            <span class="text-panel-name m-name" id="m-mname-ai"></span>
+            <span class="text-panel-meta">generado por Claude Sonnet</span>
+          </div>
+          <div class="text-panel-body" id="m-mtext-ai"></div>
+        </div>
+      </div>
+      <div id="no-ai-notice" style="display:none" class="alert alert-info">
+        Biografías IA no disponibles. Ejecuta el análisis con auditoría LLM.
+      </div>
+    </div>
+
+    <!-- Stats tab -->
+    <div class="modal-body" id="mtab-stats" style="display:none">
+      <div class="stats-strip" id="m-stats-strip"></div>
+      <div class="grid2" id="m-stats-nlp"></div>
+    </div>
+
+    <!-- Diag tab -->
+    <div class="modal-body" id="mtab-diag" style="display:none">
+      <div id="m-diag-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD ══════════════════════════════════════════════════════════════ -->
+<div id="tab-dashboard" class="tab active">
+<div class="container">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Estado del análisis</div>
+    <div id="status-body"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+  </div>
+  <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px;align-items:center">
+    <button class="btn btn-primary" onclick="startAnalysis(false)">▶ Wikipedia + NLP</button>
+    <button class="btn btn-secondary" onclick="startAnalysis(true)">🤖 + Auditoría LLM</button>
+    <button class="btn btn-outline" onclick="refresh()">🔄 Actualizar</button>
+    <button class="btn btn-outline" onclick="clearAll()">🗑 Limpiar</button>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.82rem">
+      API Key: <input type="password" id="api-key" placeholder="sk-ant-...">
+    </label>
+  </div>
+  <div class="grid4" style="margin-bottom:20px">
+    <div class="metric-card"><div class="metric-val" id="m-total">—</div><div class="metric-lbl">Pares totales</div></div>
+    <div class="metric-card"><div class="metric-val" style="color:var(--success)" id="m-valid">—</div><div class="metric-lbl">Pares válidos</div></div>
+    <div class="metric-card"><div class="metric-val" style="color:var(--warn)" id="m-skip">—</div><div class="metric-lbl">Pares omitidos</div></div>
+    <div class="metric-card"><div class="metric-val" style="color:var(--primary)" id="m-cov">—</div><div class="metric-lbl">Cobertura Wiki ES</div></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Longitud media (palabras)
+        <span class="info-btn">i<span class="tip">Número de palabras del texto plano extraído via wikipediaapi. Método del notebook: <code>len(texto_plano.split())</code></span></span>
+      </div>
+      <div class="legend"><span class="leg-item"><span class="leg-dot leg-w"></span>Mujeres</span><span class="leg-item"><span class="leg-dot leg-m"></span>Hombres</span></div>
+      <div class="chart-wrap"><canvas id="ch-words"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Comparativa agregada</div>
+      <div id="bar-agg" style="padding-top:4px"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══ AGGREGATE ══════════════════════════════════════════════════════════════ -->
+<div id="tab-aggregate" class="tab">
+<div class="container">
+  <div class="agg-title">📈 Métricas Agregadas — Mujeres vs. Hombres</div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">Radar Wikipedia
+        <span class="info-btn">i<span class="tip">Radar normalizado (0–1) de métricas cuantitativas de Wikipedia.</span></span>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="ch-radar"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Índice Domesticidad por par
+        <span class="info-btn">i<span class="tip">Fórmula notebook: <code>Id = Σ(is_alpha AND lemma in DOMEST) / total_alpha × 1000</code>. Léxico cargado de <code>config/lexicons/domestic.yaml</code></span></span>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="ch-dom-pairs"></canvas></div>
+    </div>
+  </div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">Densidad Epistémica por par
+        <span class="info-btn">i<span class="tip">Fórmula notebook: <code>D_e = adj_epistémicos / (adj_ep + adj_pers)</code>. Clasificación: léxico YAML + WordNet-es + embeddings spaCy.</span></span>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="ch-epist-pairs"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Ratio Agencia por par
+        <span class="info-btn">i<span class="tip">Fórmula notebook: <code>R = activos / pasivos</code>. Pasiva detectada por: (1) VerbForm=Part + ser anterior (morphológico, notebook) + (2) nsubjpass/auxpass (dependency, robusto).</span></span>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="ch-agency-pairs"></canvas></div>
+    </div>
+  </div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">Nº Referencias por par
+        <span class="info-btn">i<span class="tip">Conteo de etiquetas <code>&lt;ref&gt;</code> en el wikitext vía MediaWiki parse API. Refleja las referencias reales al final de la página Wikipedia.</span></span>
+      </div>
+      <div class="chart-wrap-lg"><canvas id="ch-refs-pairs"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Sesgo LLM por par
+        <span class="info-btn">i<span class="tip">Puntuación 0–10 de Claude como juez (Role Congruity Theory). 0=sin sesgo, 10=sesgo extremo.</span></span>
+      </div>
+      <div class="chart-wrap-lg" id="ch-bias-wrap"><canvas id="ch-bias-pairs"></canvas></div>
+      <p id="no-llm-msg" style="color:var(--muted);text-align:center;padding:20px;display:none">Sin datos LLM todavía.</p>
+    </div>
+  </div>
+  <hr class="section-sep">
+  <div class="agg-title">📊 Tabla resumen</div>
+  <div class="card" style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Métrica</th><th>♀ Mujeres</th><th>♂ Hombres</th><th>Delta (♀−♂)</th><th>Interpretación</th></tr></thead>
+      <tbody id="agg-tbody"></tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ══ PAIRS ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-pairs" class="tab">
+<div class="container">
+  <div class="agg-title">👥 Pares Biográficos</div>
+  <div class="alert alert-info">Si algún miembro no tiene artículo en Wikipedia ES el par se excluye. El botón 📄 muestra los 4 corpus.</div>
+  <div id="pairs-list"><div class="loading"><div class="spinner"></div>Cargando...</div></div>
+</div>
+</div>
+
+<!-- ══ NLP ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-nlp" class="tab">
+<div class="container">
+  <div class="agg-title">🔤 Análisis NLP (spaCy)</div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Domest. — promedio<span class="info-btn">i<span class="tip">Promedio del Id sobre pares válidos. Léxico en <code>config/lexicons/domestic.yaml</code></span></span></div><div class="chart-wrap"><canvas id="ch-dom-avg"></canvas></div></div>
+    <div class="card"><div class="card-title">D. Epistémica — promedio<span class="info-btn">i<span class="tip">Promedio del ratio epistémico. Léxico + WordNet-es + embeddings en <code>config/lexicons/epistemic.yaml</code></span></span></div><div class="chart-wrap"><canvas id="ch-epist-avg"></canvas></div></div>
+  </div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Ratio Agencia — promedio<span class="info-btn">i<span class="tip">Promedio del ratio agencia. Método combinado: morphológico (notebook) + dependency parsing.</span></span></div><div class="chart-wrap"><canvas id="ch-agency-avg"></canvas></div></div>
+    <div class="card"><div class="card-title">Links Científicos<span class="info-btn">i<span class="tip">Ratio de enlaces/categorías apuntando a conceptos científicos. Léxico en <code>config/lexicons/scientific.yaml</code></span></span></div><div class="chart-wrap"><canvas id="ch-scilinks-avg"></canvas></div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title">Palabras de domesticidad detectadas</div>
+    <div id="domestic-list"><p style="color:var(--muted)">Ejecuta el análisis para ver resultados.</p></div>
+  </div>
+  <div class="card">
+    <div class="card-title">⚠ Explicación métricas en cero</div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Cuando una métrica es 0, aquí aparece la razón exacta.</p>
+    <div id="metric-explanations"><p style="color:var(--muted)">Sin datos todavía.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ══ AUDIT ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-audit" class="tab">
+<div class="container">
+  <div class="agg-title">🤖 Auditoría LLM-as-a-Judge</div>
+  <div class="alert alert-warn">Requiere ANTHROPIC_API_KEY. Las biografías IA se generan <strong>sin instrucciones de neutralidad</strong> para estudiar el sesgo por defecto del modelo.</div>
+  <div id="audit-list"><div class="loading" style="color:var(--muted)">Sin resultados LLM todavía.</div></div>
+</div>
+</div>
+
+<!-- ══ CONFIG ══════════════════════════════════════════════════════════════════ -->
+<div id="tab-config" class="tab">
+<div class="container">
+  <div class="agg-title">⚙️ Configuración</div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title">Ficheros de configuración</div>
+      <p style="color:var(--muted);font-size:.84rem;line-height:1.65;margin-bottom:14px">
+        Todos los ficheros de configuración están en <code>config/</code> (volumen Docker read-only):
+      </p>
+      <div style="font-size:.82rem;line-height:2">
+        <div><code style="color:var(--warn)">config/pairs.json</code> — 12 pares biográficos (mujer, hombre, área, wiki_hint)</div>
+        <div><code style="color:var(--warn)">config/lexicons/domestic.yaml</code> — léxico de domesticidad (~80 términos)</div>
+        <div><code style="color:var(--warn)">config/lexicons/epistemic.yaml</code> — adjetivos epistémicos y de personalidad</div>
+        <div><code style="color:var(--warn)">config/lexicons/scientific.yaml</code> — palabras clave para centralidad científica</div>
+      </div>
+      <div id="config-list" style="margin-top:14px"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Arquitectura de microservicios</div>
+      <div style="font-size:.82rem;line-height:2;color:var(--muted)">
+        <div><span style="color:var(--woman)">wikipedia-extractor :8001</span> — wikipediaapi + MediaWiki API</div>
+        <div><span style="color:var(--man)">nlp-analyzer :8002</span> — spaCy 3.8 + WordNet-es + embeddings</div>
+        <div><span style="color:#a78bfa">llm-auditor :8003</span> — Claude Sonnet 4 (Anthropic)</div>
+        <div><span style="color:var(--success)">api-gateway :8000</span> — FastAPI orquestador async</div>
+        <div><span style="color:var(--warn)">frontend :8080</span> — FastAPI + HTML/CSS/JS separados</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Separate JS file — no inline logic -->
+<script src="/static/app.js"></script>
+</body>
+</html>

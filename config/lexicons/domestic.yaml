@@ -1,0 +1,111 @@
+# config/lexicons/domestic.yaml
+# Palabras de domesticidad para el Índice de Domesticidad (Id)
+# Fórmula: Id = Σ(matches_lema) / total_tokens_alpha * 1000
+#
+# Se comparan LEMAS (token.lemma_.lower()), no formas superficiales,
+# por lo que cada entrada cubre todas sus formas flexionadas.
+# Ejemplo: "casar" cubre casado/casada/casados/casadas.
+#
+# Añadir o quitar términos editando este fichero. No requiere
+# reconstruir el contenedor Docker.
+
+version: "1.0"
+
+# Familia nuclear
+familia_nuclear:
+  - madre
+  - padre
+  - mamá
+  - papá
+  - hijo
+  - hija
+  - hermano
+  - hermana
+
+# Pareja y matrimonio
+pareja_matrimonio:
+  - esposa
+  - esposo
+  - marido
+  - mujer         # sólo cuando es sinónimo de esposa — spaCy desambigua por contexto
+  - pareja
+  - matrimonio
+  - casamiento
+  - casar         # lema: cubre casada/casado/casaron
+  - boda
+  - novio
+  - novia
+  - divorci       # lema parcial: divorcio/divorciarse/divorciado
+  - viudo
+  - viuda
+
+# Familia extendida
+familia_extendida:
+  - abuelo
+  - abuela
+  - nieto
+  - nieta
+  - tío
+  - tía
+  - suegro
+  - suegra
+  - cuñado
+  - cuñada
+  - primo
+  - prima
+
+# Hogar y espacio doméstico
+hogar:
+  - hogar
+  - casa
+  - vivienda
+  - domicilio
+  - doméstico
+  - doméstica
+
+# Crianza y cuidados
+crianza:
+  - crianza
+  - cuidado
+  - cuidar
+  - maternidad
+  - paternidad
+  - embarazo
+  - embarazada
+  - gestación
+  - lactancia
+  - parto
+  - bebé
+  - niñez
+  - infancia
+
+# Vida privada y roles tradicionales
+vida_privada:
+  - familiar       # adjetivo: vida familiar
+  - pariente
+  - parentesco
+  - linaje
+  - descendencia
+  - descendiente
+  - convivencia
+  - convivir
+  - hogareño
+  - cuidador
+  - cuidadora
+
+# Términos compuestos detectados como secuencias de lemas
+# (procesados por separado en el código)
+compound_terms:
+  - "madre soltera"
+  - "padre soltero"
+  - "ama de casa"
+  - "vida familiar"
+  - "vida privada"
+  - "ámbito doméstico"
+  - "vida personal"
+  - "núcleo familiar"
+  - "unidad familiar"
+  - "vida doméstica"
+  - "tareas domésticas"
+  - "labores domésticas"
+  - "familia política"

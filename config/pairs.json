@@ -1,0 +1,114 @@
+{
+  "version": "2.0",
+  "description": "12 pares biográficos del notebook wikipediaLLMGenderBiases. Premio Ada Byron – Universidad de Deusto.",
+  "pairs": [
+    {
+      "pair_id": 1,
+      "woman": "Montserrat Meya",
+      "man": "Ramón López de Mántaras",
+      "area": "Lingüística computacional / IA",
+      "country": "ES",
+      "woman_wiki_hint": "Montserrat Meya",
+      "man_wiki_hint": "Ramón López de Mántaras"
+    },
+    {
+      "pair_id": 2,
+      "woman": "Asunción Gómez Pérez",
+      "man": "Carles Sierra",
+      "area": "Web semántica / Ontologías / IA",
+      "country": "ES",
+      "woman_wiki_hint": "Asunción Gómez-Pérez",
+      "man_wiki_hint": "Carles Sierra Oller"
+    },
+    {
+      "pair_id": 3,
+      "woman": "Nuria Oliver",
+      "man": "Mateo Valero",
+      "area": "IA / Big Data / Supercomputación",
+      "country": "ES",
+      "woman_wiki_hint": "Nuria Oliver",
+      "man_wiki_hint": "Mateo Valero"
+    },
+    {
+      "pair_id": 4,
+      "woman": "Regina Llopis Rivas",
+      "man": "Francisco Herrera Triguero",
+      "area": "IA aplicada / Inteligencia Computacional",
+      "country": "ES",
+      "woman_wiki_hint": "Regina Llopis",
+      "man_wiki_hint": "Francisco Herrera Triguero"
+    },
+    {
+      "pair_id": 5,
+      "woman": "María Ángeles Martín Prats",
+      "man": "Pedro Duque",
+      "area": "Ingeniería aeroespacial",
+      "country": "ES",
+      "woman_wiki_hint": "María Ángeles Martín Prats",
+      "man_wiki_hint": "Pedro Duque"
+    },
+    {
+      "pair_id": 6,
+      "woman": "Concha Monje",
+      "man": "Alfonso Valencia",
+      "area": "Robótica / Bioinformática",
+      "country": "ES",
+      "woman_wiki_hint": "Concepción Alicia Monje Micharet",
+      "man_wiki_hint": "Alfonso Valencia"
+    },
+    {
+      "pair_id": 7,
+      "woman": "Laura Lechuga",
+      "man": "Luis Liz Marzán",
+      "area": "Nanociencia / Biosensores",
+      "country": "ES",
+      "woman_wiki_hint": "Laura Lechuga",
+      "man_wiki_hint": "Luis Liz-Marzán"
+    },
+    {
+      "pair_id": 8,
+      "woman": "Elena García Armada",
+      "man": "José Luis López Gómez",
+      "area": "Exoesqueletos / Ingeniería robótica",
+      "country": "ES",
+      "woman_wiki_hint": "Elena García Armada",
+      "man_wiki_hint": "José Luis López Gómez"
+    },
+    {
+      "pair_id": 9,
+      "woman": "María José Escalona",
+      "man": "Juan Ignacio Cirac Sasturain",
+      "area": "Ingeniería del software / Física cuántica",
+      "country": "ES",
+      "woman_wiki_hint": "María José Escalona",
+      "man_wiki_hint": "Juan Ignacio Cirac Sasturain"
+    },
+    {
+      "pair_id": 10,
+      "woman": "Patricia Horcajada",
+      "man": "Eduardo Sáenz de Cabezón",
+      "area": "Ciencia de materiales / Matemáticas",
+      "country": "ES",
+      "woman_wiki_hint": "Patricia Horcajada",
+      "man_wiki_hint": "Eduardo Sáenz de Cabezón"
+    },
+    {
+      "pair_id": 11,
+      "woman": "Julia Guiomar Niso Galán",
+      "man": "Gustavo Deco",
+      "area": "Neuroingeniería / Neurociencia computacional",
+      "country": "ES",
+      "woman_wiki_hint": "Julia Guiomar Niso",
+      "man_wiki_hint": "Gustavo Deco"
+    },
+    {
+      "pair_id": 12,
+      "woman": "Sara García Alonso",
+      "man": "Mariano Barbacid",
+      "area": "Biología molecular / Oncología",
+      "country": "ES",
+      "woman_wiki_hint": "Sara García Alonso",
+      "man_wiki_hint": "Mariano Barbacid"
+    }
+  ]
+}

@@ -1,50 +1,49 @@
-version: "3.9"
-
 services:
 
-  # ── Wikipedia Extractor ──────────────────────────────────────────────────────
   wikipedia-extractor:
     build:
       context: ./services/wikipedia-extractor
-      dockerfile: Dockerfile
     container_name: wba-wikipedia-extractor
     restart: unless-stopped
     ports:
       - "8001:8001"
     volumes:
       - wiki-cache:/app/cache
+      - ./config:/app/config:ro
     networks:
-      - wba-network
+      - wba-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
-      interval: 30s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')\" || exit 1"]
+      interval: 20s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
-  # ── NLP Analyzer ────────────────────────────────────────────────────────────
   nlp-analyzer:
     build:
       context: ./services/nlp-analyzer
-      dockerfile: Dockerfile
     container_name: wba-nlp-analyzer
     restart: unless-stopped
     ports:
       - "8002:8002"
+    volumes:
+      - ./config:/app/config:ro
+    environment:
+      - CONFIG_DIR=/app/config
     networks:
-      - wba-network
+      - wba-net
+    # spaCy es_core_news_lg needs ~1.5 GB RAM at runtime.
+    # Docker Desktop -> Settings -> Resources -> Memory -> 4096 MB
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')\" || exit 1"]
       interval: 30s
-      timeout: 15s
-      retries: 3
+      timeout: 20s
+      retries: 8
       start_period: 60s
 
-  # ── LLM Auditor ─────────────────────────────────────────────────────────────
   llm-auditor:
     build:
       context: ./services/llm-auditor
-      dockerfile: Dockerfile
     container_name: wba-llm-auditor
     restart: unless-stopped
     ports:
@@ -52,19 +51,17 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     networks:
-      - wba-network
+      - wba-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
-      interval: 30s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health')\" || exit 1"]
+      interval: 20s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
-  # ── API Gateway / Orchestrator ───────────────────────────────────────────────
   api-gateway:
     build:
       context: ./services/api-gateway
-      dockerfile: Dockerfile
     container_name: wba-api-gateway
     restart: unless-stopped
     ports:
@@ -73,10 +70,12 @@ services:
       - WIKI_SERVICE_URL=http://wikipedia-extractor:8001
       - NLP_SERVICE_URL=http://nlp-analyzer:8002
       - LLM_SERVICE_URL=http://llm-auditor:8003
+      - CONFIG_DIR=/app/config
     volumes:
       - results-data:/app/data
+      - ./config:/app/config:ro
     networks:
-      - wba-network
+      - wba-net
     depends_on:
       wikipedia-extractor:
         condition: service_healthy
@@ -85,17 +84,15 @@ services:
       llm-auditor:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
+      interval: 20s
       timeout: 10s
-      retries: 3
-      start_period: 20s
+      retries: 5
+      start_period: 30s
 
-  # ── Frontend Dashboard ───────────────────────────────────────────────────────
   frontend:
     build:
       context: ./services/frontend
-      dockerfile: Dockerfile
     container_name: wba-frontend
     restart: unless-stopped
     ports:
@@ -103,7 +100,7 @@ services:
     environment:
       - API_GATEWAY_URL=http://localhost:8000
     networks:
-      - wba-network
+      - wba-net
     depends_on:
       api-gateway:
         condition: service_healthy
@@ -115,6 +112,6 @@ volumes:
     name: wba-results-data
 
 networks:
-  wba-network:
-    name: wba-network
+  wba-net:
+    name: wba-net
     driver: bridge

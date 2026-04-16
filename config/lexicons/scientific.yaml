@@ -1,0 +1,111 @@
+# config/lexicons/scientific.yaml
+# Palabras clave para la métrica de Centralidad de Enlaces Científicos
+# Fórmula: C_sci = enlaces_científicos / total_enlaces
+#
+# Se buscan estas cadenas (lowercase) en los títulos de enlaces internos
+# de Wikipedia y en los nombres de categorías del artículo.
+
+version: "1.0"
+
+scientific_keywords:
+  # Disciplinas STEM
+  - ciencia
+  - investigación
+  - tecnología
+  - ingeniería
+  - matemática
+  - física
+  - química
+  - biología
+  - bioquímica
+  - informática
+  - computación
+  - robótica
+  - inteligencia
+  - nanotecnología
+  - astrofísica
+  - astro
+  - astronomía
+  - biotecnología
+  - neurociencia
+  - biomedicina
+  - bioinformática
+  - geología
+  - ecología
+  - genética
+  - genómica
+  - proteómica
+  - epidemiología
+  - estadística
+  - algorítmica
+  - telecomunicación
+  - electrónica
+  - fotónica
+  - óptica
+  - mecánica
+  - termodinámica
+  - climatología
+  - oceanografía
+
+  # Actividad investigadora
+  - laboratorio
+  - universidad
+  - instituto
+  - centro de investigación
+  - consejo superior
+  - csic
+  - tesis
+  - doctorado
+  - cátedra
+  - máster
+  - grado
+  - licenciatura
+  - publicación
+  - artículo científico
+  - revista científica
+  - journal
+  - congreso
+  - conferencia científica
+  - simposio
+  - seminario académico
+  - proyecto de investigación
+  - beca
+  - subvención
+  - patente
+  - algoritmo
+  - modelo
+  - experimento
+  - hipótesis
+  - teoría
+  - paradigma
+  - metodología científica
+
+  # Reconocimientos científicos
+  - premio
+  - galardón
+  - medalla
+  - distinción científica
+  - fellowship
+  - academia de ciencias
+  - real academia
+
+  # Tecnología específica
+  - software
+  - hardware
+  - inteligencia artificial
+  - aprendizaje automático
+  - machine learning
+  - deep learning
+  - red neuronal
+  - big data
+  - nube
+  - blockchain
+  - ciberseguridad
+  - satélite
+  - telescopio
+  - microscopio
+  - sensor
+  - biosensor
+  - nanomaterial
+  - supercomputador
+  - computación cuántica

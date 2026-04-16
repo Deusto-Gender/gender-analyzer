@@ -1,0 +1,253 @@
+# config/lexicons/epistemic.yaml
+# Léxicos para la Densidad Epistémica
+# Fórmula: D_e = adj_intelecto / (adj_intelecto + adj_personalidad)
+#
+# Los adjetivos se comparan por LEMA (token.lemma_.lower()).
+# Estrategia de clasificación:
+#   1. Coincidencia directa con este léxico (prioridad máxima)
+#   2. Expansión vía WordNet-es (sinónimos automáticos, si está disponible)
+#   3. Embeddings de spaCy para vecinos semánticos (umbral configurable)
+#
+# Se pueden añadir términos aquí sin reconstruir contenedores.
+
+version: "1.0"
+
+# Umbral de similitud semántica para expansión por embeddings (0.0-1.0)
+# Sólo se aplica si el modelo spaCy tiene vectores (lg/md)
+semantic_expansion_threshold: 0.75
+
+# ── Adjetivos epistémicos ──────────────────────────────────────────────────────
+# Denotan capacidad intelectual, expertise o contribución cognitiva.
+epistemic:
+  # Capacidad intelectual
+  - brillante
+  - genial
+  - inteligente
+  - sagaz
+  - perspicaz
+  - lúcido
+  - agudo
+  - clarividente
+
+  # Expertise y competencia
+  - experto
+  - experta
+  - competente
+  - capaz
+  - cualificado
+  - cualificada
+  - cualificado
+  - especializado
+  - especializada
+  - versado
+  - versada
+  - hábil
+  - habilidoso
+  - habilidosa
+
+  # Talento y potencial
+  - talentoso
+  - talentosa
+  - dotado
+  - dotada
+  - brillante
+  - precoz
+  - prodigioso
+  - prodigiosa
+  - excepcional
+
+  # Sabiduría y conocimiento
+  - sabio
+  - sabia
+  - erudito
+  - erudita
+  - ilustrado
+  - ilustrada
+  - culto
+  - culta
+  - letrado
+  - letrada
+
+  # Innovación y creatividad intelectual
+  - innovador
+  - innovadora
+  - pionero
+  - pionera
+  - visionario
+  - visionaria
+  - creativo
+  - creativa
+  - original
+  - inventivo
+  - inventiva
+
+  # Reconocimiento académico
+  - distinguido
+  - distinguida
+  - reconocido
+  - reconocida
+  - reputado
+  - reputada
+  - prestigioso
+  - prestigiosa
+  - eminente
+  - ilustre
+  - insigne
+  - célebre
+  - afamado
+  - afamada
+  - renombrado
+  - renombrada
+  - destacado
+  - destacada
+  - notable
+  - sobresaliente
+  - influyente
+  - referente
+
+  # Rigor y método
+  - riguroso
+  - rigurosa
+  - metódico
+  - metódica
+  - sistemático
+  - sistemática
+  - analítico
+  - analítica
+  - crítico   # en sentido cognitivo positivo
+  - meticuloso
+  - meticulosa
+  - preciso
+  - precisa
+
+  # Liderazgo intelectual
+  - líder
+  - vanguardista
+  - revolucionario
+  - revolucionaria
+  - transformador
+  - transformadora
+  - influyente
+  - prolífico
+  - prolífica
+
+# ── Adjetivos de personalidad ──────────────────────────────────────────────────
+# Describen rasgos conductuales o emocionales, NO capacidad intelectual.
+personality:
+  # Laboriosidad / esfuerzo (vs. talento innato)
+  - trabajador
+  - trabajadora
+  - laborioso
+  - laboriosa
+  - esforzado
+  - esforzada
+  - perseverante
+  - tenaz
+  - constante
+  - incansable
+  - infatigable
+  - diligente
+
+  # Virtudes relacionales
+  - amable
+  - amigable
+  - cordial
+  - simpático
+  - simpática
+  - generoso
+  - generosa
+  - solidario
+  - solidaria
+  - colaborador
+  - colaboradora
+  - cooperador
+  - cooperadora
+
+  # Virtudes morales
+  - honesto
+  - honesta
+  - íntegro
+  - íntegra
+  - responsable
+  - comprometido
+  - comprometida
+  - ético
+  - ética
+  - recto
+  - recta
+
+  # Modestia / discreción
+  - humilde
+  - modesto
+  - modesta
+  - discreto
+  - discreta
+  - sencillo
+  - sencilla
+  - reservado
+  - reservada
+
+  # Energía / actitud
+  - activo
+  - activa
+  - dinámico
+  - dinámica
+  - emprendedor
+  - emprendedora
+  - entusiasta
+  - apasionado
+  - apasionada
+  - optimista
+  - positivo
+  - positiva
+
+  # Resiliencia
+  - valiente
+  - luchador
+  - luchadora
+  - resiliente
+  - fuerte
+  - decidido
+  - decidida
+
+  # Cuidado / emociones
+  - cariñoso
+  - cariñosa
+  - sensible
+  - empático
+  - empática
+  - dedicado
+  - dedicada
+  - vocacional
+
+# ── Adjetivos a ignorar (ni epistémicos ni de personalidad) ───────────────────
+# Neutros, técnicos, cuantitativos, nacionales, etc.
+ignore:
+  - español
+  - española
+  - europeo
+  - europea
+  - internacional
+  - nacional
+  - primer
+  - primera
+  - segundo
+  - segunda
+  - actual
+  - nuevo
+  - nueva
+  - gran
+  - grande
+  - principal
+  - importante
+  - propio
+  - propia
+  - mismo
+  - misma
+  - otro
+  - otra
+  - diferente
+  - diverso
+  - diversa
+  - varios
+  - varias

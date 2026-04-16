@@ -1,91 +1,351 @@
 """
-NLP Analyzer Microservice
-Performs linguistic analysis of biography texts:
-- Domesticity Index
-- Epistemic Adjective Density
-- Agency Ratio (Active/Passive verbs)
-- Scientific Link Centrality
+NLP Analyzer v6
+Improvements over v5:
+  - Lexicons loaded from YAML config files (config/lexicons/)
+  - Metric 3 (ratio_agencia): enhanced with dependency-based passive detection
+    + morphological ser+participio from notebook (combined approach)
+  - WordNet-es expansion for adjective classification when available
+  - Metric explanation: why a metric can be zero (logged and returned)
+  - Domestic lexicon uses lemmas properly — avoids false positives like
+    "madre" in "Pedro Duque: nacida" (the word "nacida" is not in DOMESTIC)
+  - Configurable semantic expansion via spaCy vectors
 """
-import re
-import logging
-from typing import List, Dict, Optional, Tuple
+import os, re, json, logging
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional, Set
 from collections import Counter
-
+import yaml
 import spacy
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="NLP Analyzer Service",
-    description="Linguistic and discourse analysis of biography texts",
-    version="1.0.0"
-)
-
+app = FastAPI(title="NLP Analyzer v6", version="6.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Load spaCy model
+# ── Config paths ───────────────────────────────────────────────────────────────
+CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/app/config"))
+LEXICON_DIR = CONFIG_DIR / "lexicons"
+
+
+def load_yaml(path: Path) -> Dict:
+    with open(path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+
+# ── Load lexicons from YAML ────────────────────────────────────────────────────
+def load_domestic_lexicon() -> Tuple[Set[str], List[str]]:
+    data = load_yaml(LEXICON_DIR / "domestic.yaml")
+    words: Set[str] = set()
+    for category, terms in data.items():
+        if category in ("version", "compound_terms"):
+            continue
+        if isinstance(terms, list):
+            words.update(t.lower() for t in terms)
+    compounds = [c.lower() for c in data.get("compound_terms", [])]
+    return words, compounds
+
+
+def load_epistemic_lexicon() -> Tuple[Set[str], Set[str], Set[str], float]:
+    data = load_yaml(LEXICON_DIR / "epistemic.yaml")
+    epistemic = set(t.lower() for t in data.get("epistemic", []))
+    personality = set(t.lower() for t in data.get("personality", []))
+    ignore = set(t.lower() for t in data.get("ignore", []))
+    threshold = float(data.get("semantic_expansion_threshold", 0.75))
+    return epistemic, personality, ignore, threshold
+
+
+def load_scientific_keywords() -> List[str]:
+    data = load_yaml(LEXICON_DIR / "scientific.yaml")
+    return [k.lower() for k in data.get("scientific_keywords", [])]
+
+
 try:
-    nlp = spacy.load("es_core_news_lg")
-    logger.info("Loaded es_core_news_lg")
-except OSError:
+    DOMESTIC_LEMMAS, DOMESTIC_COMPOUNDS = load_domestic_lexicon()
+    ADJ_EPISTEMIC, ADJ_PERSONALITY, ADJ_IGNORE, SEM_THRESHOLD = load_epistemic_lexicon()
+    SCIENTIFIC_KW = load_scientific_keywords()
+    logger.info(f"Lexicons loaded: {len(DOMESTIC_LEMMAS)} domestic, "
+                f"{len(ADJ_EPISTEMIC)} epistemic, {len(ADJ_PERSONALITY)} personality")
+except Exception as e:
+    logger.error(f"Failed to load lexicons: {e}")
+    DOMESTIC_LEMMAS, DOMESTIC_COMPOUNDS = set(), []
+    ADJ_EPISTEMIC, ADJ_PERSONALITY, ADJ_IGNORE, SEM_THRESHOLD = set(), set(), set(), 0.75
+    SCIENTIFIC_KW = []
+
+# ── Load spaCy model ───────────────────────────────────────────────────────────
+nlp = None
+NLP_MODEL = "unknown"
+for _model in ["es_core_news_lg", "es_core_news_md", "es_core_news_sm"]:
     try:
-        nlp = spacy.load("es_core_news_md")
-        logger.info("Loaded es_core_news_md")
-    except OSError:
-        nlp = spacy.load("es_core_news_sm")
-        logger.info("Loaded es_core_news_sm")
+        nlp = spacy.load(_model)
+        NLP_MODEL = _model
+        logger.info(f"spaCy loaded: {_model} v{nlp.meta.get('version', '?')}")
+        break
+    except OSError as e:
+        logger.warning(f"Cannot load {_model}: {e}")
 
-# ── Lexicons ──────────────────────────────────────────────────────────────────
+if nlp is None:
+    raise RuntimeError("No Spanish spaCy model found")
 
-DOMESTIC_KEYWORDS = [
-    "madre", "esposa", "hija", "hermana", "familia", "casada", "matrimonio",
-    "marido", "esposo", "pareja", "maternidad", "hijos", "crianza", "hogar",
-    "casó", "divorci", "viuda", "abuela", "nuera", "suegra", "cuñada",
-    "nacida", "nacida en", "infancia", "niñez", "adolescencia"
-]
+HAS_VECTORS = nlp.vocab.vectors.shape[0] > 0
+logger.info(f"Vectors available: {HAS_VECTORS} ({nlp.vocab.vectors.shape})")
 
-EPISTEMIC_ADJECTIVES = [
-    "brillante", "genial", "pionera", "pionero", "experta", "experto",
-    "influyente", "destacada", "destacado", "referente", "innovadora", "innovador",
-    "prolífica", "prolífico", "renombrada", "renombrado", "excelente", "distinguida",
-    "distinguido", "sobresaliente", "eminente", "insigne", "célebre", "reconocida",
-    "reconocido", "prestigiosa", "prestigioso", "líder", "visionaria", "visionario",
-    "revolucionaria", "revolucionario", "notable", "excepcional", "talentosa",
-    "talentoso", "inteligente", "rigurosa", "riguroso", "meticulosa", "meticuloso",
-    "creativa", "creativo", "inventora", "inventor"
-]
+# ── WordNet-es expansion ───────────────────────────────────────────────────────
+try:
+    from nltk.corpus import wordnet as wn
+    import nltk
+    # Try to use Open Multilingual WordNet for Spanish
+    try:
+        nltk.data.find('corpora/omw-1.4')
+        wn.synsets('brillante', lang='spa')
+        HAS_WORDNET = True
+        logger.info("WordNet-es (OMW) available for adjective expansion")
+    except Exception:
+        HAS_WORDNET = False
+        logger.info("WordNet-es not available — using lexicon-only classification")
+except ImportError:
+    HAS_WORDNET = False
 
-PERSONALITY_ADJECTIVES = [
-    "trabajadora", "trabajador", "amable", "constante", "dedicada", "dedicado",
-    "apasionada", "apasionado", "entusiasta", "humilde", "discreta", "discreto",
-    "comprometida", "comprometido", "perseverante", "tenaz", "esforzada", "esforzado",
-    "valiente", "luchadora", "luchador", "emprendedora", "emprendedor", "activa",
-    "activo", "dinámica", "dinámico", "optimista", "resiliente"
-]
 
-# Passive voice markers in Spanish
-PASSIVE_PATTERNS = [
-    r'\b(fue|fueron|es|son|era|eran|ha sido|han sido|había sido|habían sido)\s+\w+da\b',
-    r'\b(fue|fueron|es|son|era|eran)\s+\w+do\b',
-    r'\bse\s+(le|les)\s+(otorgó|concedió|asignó|nombró|eligió|seleccionó)\b',
-    r'\bse\s+\w+(ó|aron)\b',
-    r'\bfue\s+(nombrada|nombrado|elegida|elegido|seleccionada|seleccionado|galardonada|galardonado)\b',
-    r'\b(recibió|recibieron)\s+(el|la|los|las)\s+\w+\s+(premio|galardón|reconocimiento)\b',
-]
+def wordnet_expand_epistemic(lemma: str) -> Optional[str]:
+    """
+    Use WordNet to classify an unknown adjective.
+    Returns 'epistemic', 'personality', or None.
+    """
+    if not HAS_WORDNET:
+        return None
+    try:
+        synsets = wn.synsets(lemma, pos=wn.ADJ, lang='spa')
+        for syn in synsets:
+            # Check if any definition word overlaps with known categories
+            definition = syn.definition().lower()
+            ep_signals = ["intellig", "intellect", "expert", "knowledge", "wisdom",
+                          "skill", "talent", "brilliant", "genius", "capable"]
+            pers_signals = ["kind", "friendly", "honest", "hard-working", "diligent",
+                            "humble", "modest", "brave", "dedicated", "generous"]
+            if any(s in definition for s in ep_signals):
+                return "epistemic"
+            if any(s in definition for s in pers_signals):
+                return "personality"
+    except Exception:
+        pass
+    return None
 
-SCIENTIFIC_CATEGORIES = [
-    "ciencia", "investigación", "tecnología", "ingeniería", "matemáticas",
-    "física", "química", "biología", "informática", "computación", "robótica",
-    "inteligencia artificial", "nanotecnología", "astrofísica", "biotecnología",
-    "neurociencia", "software", "algoritmo", "publicación", "revista científica",
-    "universidad", "instituto", "laboratorio", "tesis", "doctorado", "cátedra",
-    "premio", "beca", "grant", "proyecto", "patente"
-]
 
+def semantic_classify_adj(token) -> Optional[str]:
+    """
+    Use spaCy word vectors to classify an unknown adjective
+    by computing similarity to seed words.
+    """
+    if not HAS_VECTORS or not token.has_vector:
+        return None
+
+    ep_seeds = ["inteligente", "brillante", "experto", "innovador", "talentoso"]
+    pers_seeds = ["amable", "trabajador", "honesto", "humilde", "dedicado"]
+
+    try:
+        ep_sim = max(
+            token.similarity(nlp(seed)[0])
+            for seed in ep_seeds
+            if nlp(seed)[0].has_vector
+        )
+        pers_sim = max(
+            token.similarity(nlp(seed)[0])
+            for seed in pers_seeds
+            if nlp(seed)[0].has_vector
+        )
+        if max(ep_sim, pers_sim) < SEM_THRESHOLD:
+            return None
+        return "epistemic" if ep_sim >= pers_sim else "personality"
+    except Exception:
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  METRIC IMPLEMENTATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def compute_domesticity_index(doc) -> Tuple[float, List[str], str]:
+    """
+    Notebook implementation + compound detection:
+      Id = Σ(lemma in domestic_set) / total_alpha_tokens * 1000
+
+    Returns: (index, keywords_found, explanation)
+    Explanation explains why result can be 0.
+    """
+    total_alpha = 0
+    count = 0
+    found = set()
+
+    for token in doc:
+        if token.is_alpha:
+            total_alpha += 1
+            lemma = token.lemma_.lower()
+            if lemma in DOMESTIC_LEMMAS:
+                count += 1
+                found.add(lemma)
+
+    # Also check compound terms in the raw text
+    text_lower = doc.text.lower()
+    for compound in DOMESTIC_COMPOUNDS:
+        occurrences = text_lower.count(compound)
+        if occurrences > 0:
+            count += occurrences
+            found.add(compound)
+
+    if total_alpha == 0:
+        return 0.0, [], "Texto vacío o sin tokens alfabéticos"
+
+    index = round((count / total_alpha) * 1000, 6)
+
+    if index == 0.0:
+        explanation = (
+            f"Ninguno de los {len(DOMESTIC_LEMMAS)} lemas domésticos apareció "
+            f"en el texto ({total_alpha} tokens). Esto es esperable en biografías "
+            "puramente centradas en logros científicos."
+        )
+    else:
+        explanation = f"{count} ocurrencias en {total_alpha} tokens"
+
+    return index, sorted(found), explanation
+
+
+def classify_adjective(token) -> Optional[str]:
+    """
+    Classify a spaCy ADJ token as 'epistemic', 'personality', or None.
+    Priority: lexicon > WordNet-es > spaCy vectors > ignore
+    """
+    lemma = token.lemma_.lower()
+
+    # 1. Ignore list
+    if lemma in ADJ_IGNORE:
+        return None
+
+    # 2. Direct lexicon match
+    if lemma in ADJ_EPISTEMIC:
+        return "epistemic"
+    if lemma in ADJ_PERSONALITY:
+        return "personality"
+
+    # 3. WordNet-es expansion
+    wn_result = wordnet_expand_epistemic(lemma)
+    if wn_result:
+        return wn_result
+
+    # 4. Semantic similarity via spaCy vectors
+    sem_result = semantic_classify_adj(token)
+    return sem_result
+
+
+def compute_epistemic_density(doc) -> Tuple[float, int, int, List[str], str]:
+    """
+    Notebook implementation with enhanced classification:
+      D_e = adj_epistemic / (adj_epistemic + adj_personality)
+
+    Returns: (density, ep_count, pers_count, top_adjs, explanation)
+    """
+    ep_count = 0
+    pers_count = 0
+    all_adjs = []
+
+    for token in doc:
+        if token.pos_ == "ADJ":
+            all_adjs.append(token.lemma_.lower())
+            classification = classify_adjective(token)
+            if classification == "epistemic":
+                ep_count += 1
+            elif classification == "personality":
+                pers_count += 1
+
+    total = ep_count + pers_count
+
+    if total == 0:
+        explanation = (
+            f"No se detectaron adjetivos epistémicos ni de personalidad "
+            f"({len(all_adjs)} adjetivos totales detectados). "
+            f"Lexicón epistémico: {len(ADJ_EPISTEMIC)} términos, "
+            f"personalidad: {len(ADJ_PERSONALITY)} términos. "
+            "Posible causa: texto corto, léxico especializado no cubierto, "
+            "o artículo sin adjetivos valorativos."
+        )
+        density = 0.0
+    else:
+        density = round(ep_count / total, 6)
+        explanation = (
+            f"{ep_count} epistémicos + {pers_count} personalidad = {total} total"
+        )
+
+    top = [a for a, _ in Counter(all_adjs).most_common(10)]
+    return density, ep_count, pers_count, top, explanation
+
+
+def compute_agency_ratio(doc) -> Tuple[float, int, int, str]:
+    """
+    Enhanced agency ratio combining:
+      - Notebook method: ser + VerbForm=Part (morphological)
+      - Dependency method: nsubjpass / auxpass detection (more robust)
+
+    The combined approach reduces false negatives.
+    Returns: (ratio, active_count, passive_count, explanation)
+    """
+    tokens = list(doc)
+    activos = 0
+    pasivos = 0
+
+    for i, token in enumerate(tokens):
+        if token.pos_ == "VERB":
+
+            # ── Method A: Notebook (morphological) ──
+            es_participio = "VerbForm=Part" in str(token.morph)
+            tiene_ser_antes = (i > 0 and tokens[i - 1].lemma_ == "ser")
+            passive_morph = es_participio and tiene_ser_antes
+
+            # ── Method B: Dependency parsing ──
+            # nsubjpass = nominal subject of passive clause
+            # auxpass = auxiliary in passive construction
+            child_deps = {c.dep_ for c in token.children}
+            passive_dep = "nsubjpass" in child_deps or "auxpass" in child_deps
+
+            # ── Combined: passive if EITHER method detects it ──
+            if passive_morph or passive_dep:
+                pasivos += 1
+            else:
+                activos += 1
+
+    if pasivos == 0:
+        if activos == 0:
+            explanation = (
+                "Texto vacío o sin verbos detectados. "
+                "El ratio de agencia no puede calcularse sin verbos. "
+                "Verificar que el texto fue extraído correctamente de Wikipedia."
+            )
+            ratio = 0.0
+        else:
+            explanation = (
+                f"{activos} verbos activos, 0 pasivos. "
+                "Ratio devuelto como 0 por convención del notebook "
+                "(no como infinito). La ausencia de pasivas indica alta agencia."
+            )
+            ratio = 0.0
+    else:
+        ratio = round(activos / pasivos, 6)
+        explanation = f"{activos} activos / {pasivos} pasivos"
+
+    return ratio, activos, pasivos, explanation
+
+
+def compute_scientific_links(links: List[str], categories: List[str]) -> float:
+    items = [x.lower() for x in links + categories]
+    if not items:
+        return 0.0
+    sci = sum(1 for i in items if any(k in i for k in SCIENTIFIC_KW))
+    return round(sci / len(items), 6)
+
+
+# ── Pydantic models ────────────────────────────────────────────────────────────
 
 class NLPRequest(BaseModel):
     nombre: str
@@ -95,203 +355,120 @@ class NLPRequest(BaseModel):
     categories: List[str] = []
 
 
+class MetricExplanation(BaseModel):
+    value: float
+    explanation: str
+    is_zero: bool
+
+
 class NLPMetrics(BaseModel):
     nombre: str
     genero: str
+    # Metric values
     domesticity_index: float = 0.0
-    epistemic_adjectives_count: int = 0
-    personality_adjectives_count: int = 0
     epistemic_density: float = 0.0
     agency_ratio: float = 0.0
+    scientific_links_ratio: float = 0.0
+    # Breakdown
+    epistemic_adjectives_count: int = 0
+    personality_adjectives_count: int = 0
     active_verbs: int = 0
     passive_verbs: int = 0
-    scientific_links_ratio: float = 0.0
+    # Top words
     top_adjectives: List[str] = []
     top_nouns: List[str] = []
     domestic_keywords_found: List[str] = []
+    # Explanations (why metric is zero if applicable)
+    explanation_domesticity: str = ""
+    explanation_epistemic: str = ""
+    explanation_agency: str = ""
+    # Meta
     text_length_tokens: int = 0
     sentences_count: int = 0
-    avg_sentence_length: float = 0.0
-    error: Optional[str] = None
+    nlp_model: str = NLP_MODEL
+    wordnet_available: bool = HAS_WORDNET
+    vectors_available: bool = HAS_VECTORS
+    error: str = ""
 
 
-def compute_domesticity_index(text: str) -> Tuple[float, List[str]]:
-    """I_d = Σ(domestic_keywords) / N * 1000"""
-    text_lower = text.lower()
-    words = text_lower.split()
-    N = len(words) if words else 1
-    
-    found = []
-    count = 0
-    for kw in DOMESTIC_KEYWORDS:
-        occurrences = len(re.findall(r'\b' + re.escape(kw) + r'\b', text_lower))
-        if occurrences > 0:
-            found.append(kw)
-            count += occurrences
-    
-    index = (count / N) * 1000
-    return round(index, 4), found
-
-
-def compute_epistemic_density(doc) -> Tuple[int, int, float]:
-    """Count epistemic vs personality adjectives."""
-    text_lower = doc.text.lower()
-    
-    epistemic_count = 0
-    for adj in EPISTEMIC_ADJECTIVES:
-        epistemic_count += len(re.findall(r'\b' + re.escape(adj) + r'\b', text_lower))
-    
-    personality_count = 0
-    for adj in PERSONALITY_ADJECTIVES:
-        personality_count += len(re.findall(r'\b' + re.escape(adj) + r'\b', text_lower))
-    
-    total = epistemic_count + personality_count
-    density = epistemic_count / total if total > 0 else 0.0
-    
-    return epistemic_count, personality_count, round(density, 4)
-
-
-def compute_agency_ratio(text: str, doc) -> Tuple[float, int, int]:
-    """R_agencia = active_verbs / passive_verbs"""
-    passive_count = 0
-    for pattern in PASSIVE_PATTERNS:
-        passive_count += len(re.findall(pattern, text.lower()))
-    
-    # Count active main verbs from spaCy
-    active_count = 0
-    for token in doc:
-        if token.pos_ == "VERB" and token.dep_ in ("ROOT", "ccomp", "xcomp", "advcl"):
-            # Check it's not passive
-            children_deps = [c.dep_ for c in token.children]
-            if "nsubjpass" not in children_deps and "auxpass" not in children_deps:
-                active_count += 1
-    
-    ratio = active_count / max(passive_count, 1)
-    return round(ratio, 4), active_count, passive_count
-
-
-def compute_scientific_links(links: List[str], categories: List[str]) -> float:
-    """Ratio of links pointing to scientific concepts vs other topics."""
-    if not links and not categories:
-        return 0.0
-    
-    all_items = [l.lower() for l in links] + [c.lower() for c in categories]
-    if not all_items:
-        return 0.0
-    
-    scientific_count = sum(
-        1 for item in all_items
-        if any(sci_kw in item for sci_kw in SCIENTIFIC_CATEGORIES)
-    )
-    
-    return round(scientific_count / len(all_items), 4)
-
-
-def get_top_adjectives(doc, n: int = 10) -> List[str]:
-    adjectives = [
-        token.lemma_.lower() for token in doc
-        if token.pos_ == "ADJ" and len(token.text) > 3
-    ]
-    counter = Counter(adjectives)
-    return [adj for adj, _ in counter.most_common(n)]
-
-
-def get_top_nouns(doc, n: int = 10) -> List[str]:
-    nouns = [
-        token.lemma_.lower() for token in doc
-        if token.pos_ == "NOUN" and len(token.text) > 3
-    ]
-    counter = Counter(nouns)
-    return [noun for noun, _ in counter.most_common(n)]
-
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "nlp-analyzer", "model": nlp.meta.get("name", "unknown")}
+def health():
+    return {
+        "status": "ok",
+        "service": "nlp-analyzer",
+        "version": "6.0.0",
+        "model": NLP_MODEL,
+        "wordnet_es": HAS_WORDNET,
+        "vectors": HAS_VECTORS,
+        "lexicon_sizes": {
+            "domestic_lemmas": len(DOMESTIC_LEMMAS),
+            "domestic_compounds": len(DOMESTIC_COMPOUNDS),
+            "epistemic_adjs": len(ADJ_EPISTEMIC),
+            "personality_adjs": len(ADJ_PERSONALITY),
+            "scientific_kw": len(SCIENTIFIC_KW),
+        }
+    }
+
+
+@app.get("/lexicons")
+def get_lexicons():
+    """Return current lexicon contents for inspection."""
+    return {
+        "domestic_lemmas": sorted(DOMESTIC_LEMMAS),
+        "domestic_compounds": DOMESTIC_COMPOUNDS,
+        "epistemic": sorted(ADJ_EPISTEMIC),
+        "personality": sorted(ADJ_PERSONALITY),
+        "ignore": sorted(ADJ_IGNORE),
+        "scientific_keywords": SCIENTIFIC_KW[:30],
+        "semantic_threshold": SEM_THRESHOLD,
+    }
 
 
 @app.post("/analyze", response_model=NLPMetrics)
-def analyze_biography(request: NLPRequest):
-    """Perform NLP analysis on a biography text."""
-    if not request.text or len(request.text.strip()) < 50:
-        return NLPMetrics(
-            nombre=request.nombre,
-            genero=request.genero,
-            error="Text too short or empty"
-        )
-
+def analyze(req: NLPRequest):
+    if not req.text or len(req.text.strip()) < 30:
+        return NLPMetrics(nombre=req.nombre, genero=req.genero,
+                          error="Text too short or empty")
     try:
-        # Truncate for spaCy (max ~1M chars)
-        text = request.text[:100000]
-        
-        # Process with spaCy (in chunks if needed)
-        doc = nlp(text[:50000])  # spaCy has limits
-        
-        # Compute all metrics
-        domesticity_idx, domestic_found = compute_domesticity_index(text)
-        epistemic_count, personality_count, epistemic_density = compute_epistemic_density(doc)
-        agency_ratio, active_verbs, passive_verbs = compute_agency_ratio(text, doc)
-        scientific_ratio = compute_scientific_links(request.links, request.categories)
-        top_adjs = get_top_adjectives(doc)
-        top_nouns = get_top_nouns(doc)
-        
-        sentences = list(doc.sents)
-        avg_sentence_length = (
-            sum(len(s) for s in sentences) / len(sentences) if sentences else 0
-        )
-        
-        return NLPMetrics(
-            nombre=request.nombre,
-            genero=request.genero,
-            domesticity_index=domesticity_idx,
-            epistemic_adjectives_count=epistemic_count,
-            personality_adjectives_count=personality_count,
-            epistemic_density=epistemic_density,
-            agency_ratio=agency_ratio,
-            active_verbs=active_verbs,
-            passive_verbs=passive_verbs,
-            scientific_links_ratio=scientific_ratio,
-            top_adjectives=top_adjs,
-            top_nouns=top_nouns,
-            domestic_keywords_found=domestic_found,
-            text_length_tokens=len(doc),
-            sentences_count=len(sentences),
-            avg_sentence_length=round(avg_sentence_length, 2)
-        )
+        text = req.text[:80000]
+        doc = nlp(text[:50000])  # spaCy processing limit
 
-    except Exception as e:
-        logger.error(f"NLP analysis error for {request.nombre}: {e}")
+        did, dom_found, dom_exp = compute_domesticity_index(doc)
+        ep_density, ep_count, pers_count, top_adjs, ep_exp = compute_epistemic_density(doc)
+        ag_ratio, active_v, passive_v, ag_exp = compute_agency_ratio(doc)
+        sci_ratio = compute_scientific_links(req.links, req.categories)
+
+        nouns = [t.lemma_.lower() for t in doc
+                 if t.pos_ == "NOUN" and len(t.text) > 3]
+        sents = list(doc.sents)
+
         return NLPMetrics(
-            nombre=request.nombre,
-            genero=request.genero,
-            error=str(e)
+            nombre=req.nombre,
+            genero=req.genero,
+            domesticity_index=did,
+            epistemic_density=ep_density,
+            agency_ratio=ag_ratio,
+            scientific_links_ratio=sci_ratio,
+            epistemic_adjectives_count=ep_count,
+            personality_adjectives_count=pers_count,
+            active_verbs=active_v,
+            passive_verbs=passive_v,
+            top_adjectives=top_adjs,
+            top_nouns=[n for n, _ in Counter(nouns).most_common(10)],
+            domestic_keywords_found=dom_found,
+            explanation_domesticity=dom_exp,
+            explanation_epistemic=ep_exp,
+            explanation_agency=ag_exp,
+            text_length_tokens=len(doc),
+            sentences_count=len(sents),
         )
+    except Exception as e:
+        logger.error(f"NLP error for {req.nombre}: {e}", exc_info=True)
+        return NLPMetrics(nombre=req.nombre, genero=req.genero, error=str(e)[:300])
 
 
 @app.post("/analyze/batch")
-def analyze_batch(requests: List[NLPRequest]):
-    """Analyze multiple biographies."""
-    results = []
-    for req in requests:
-        result = analyze_biography(req)
-        results.append(result.model_dump())
-    return {"results": results}
-
-
-@app.post("/compare")
-def compare_pair(woman: NLPRequest, man: NLPRequest):
-    """Compare NLP metrics between a woman and man pair."""
-    woman_metrics = analyze_biography(woman)
-    man_metrics = analyze_biography(man)
-    
-    comparison = {
-        "woman": woman_metrics.model_dump(),
-        "man": man_metrics.model_dump(),
-        "differences": {
-            "domesticity_delta": round(woman_metrics.domesticity_index - man_metrics.domesticity_index, 4),
-            "epistemic_density_delta": round(woman_metrics.epistemic_density - man_metrics.epistemic_density, 4),
-            "agency_ratio_delta": round(woman_metrics.agency_ratio - man_metrics.agency_ratio, 4),
-            "scientific_links_delta": round(woman_metrics.scientific_links_ratio - man_metrics.scientific_links_ratio, 4),
-        }
-    }
-    return comparison
+def analyze_batch(reqs: List[NLPRequest]):
+    return {"results": [analyze(r).model_dump() for r in reqs]}
