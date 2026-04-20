@@ -26,11 +26,14 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 API_GATEWAY_URL = os.getenv("API_GATEWAY_URL", "http://localhost:8000")
 
 
+APP_VERSION = "6.2.0"  # bump to bust browser cache
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "api_gateway_url": API_GATEWAY_URL,
+        "app_version": APP_VERSION,
     })
 
 

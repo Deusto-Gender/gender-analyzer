@@ -50,6 +50,7 @@ services:
       - "8003:8003"
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - NLP_SERVICE_URL=http://nlp-analyzer:8002
     networks:
       - wba-net
     healthcheck:

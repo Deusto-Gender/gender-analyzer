@@ -36,10 +36,21 @@ async function apiFetch(path, opts) {
 }
 
 async function startAnalysis(withLLM) {
-  const key = document.getElementById('api-key').value.trim();
-  if (withLLM && !key) {
-    alert('Introduce tu ANTHROPIC_API_KEY para la auditoría LLM.');
-    return;
+  if (withLLM) {
+    // Test API key before starting — gives immediate feedback
+    const testDiv = document.getElementById('llm-key-status');
+    if (testDiv) { testDiv.innerHTML = '<span style="color:var(--warn)">Verificando API key...</span>'; }
+    const test = await apiFetch('/llm/test');
+    if (test && !test.ok) {
+      const msg = test.error || 'Error desconocido';
+      if (testDiv) { testDiv.innerHTML = `<span style="color:var(--danger)">❌ ${msg}</span>`; }
+      alert('⚠️ Error en la API de Anthropic:\n\n' + msg +
+            '\n\nPara arreglarlo:\n1. Abre el fichero .env en la raíz del proyecto\n' +
+            '2. Verifica que ANTHROPIC_API_KEY=sk-ant-... es correcta\n' +
+            '3. Ejecuta: docker compose up --build llm-auditor');
+      return;
+    }
+    if (testDiv && test) { testDiv.innerHTML = `<span style="color:var(--success)">✓ API key OK (${test.model})</span>`; }
   }
   const d = await apiFetch(`/analyze/start?run_llm=${withLLM}`, { method: 'POST' });
   if (d) {
@@ -47,6 +58,23 @@ async function startAnalysis(withLLM) {
     startPolling();
   }
 }
+
+async function testLLMKey() {
+  const el = document.getElementById('llm-key-status');
+  if (el) el.innerHTML = '<span style="color:var(--warn)">Verificando...</span>';
+  const r = await apiFetch('/llm/test');
+  if (!r) {
+    if (el) el.innerHTML = '<span style="color:var(--danger)">❌ No se puede conectar al servicio LLM</span>';
+    return;
+  }
+  if (r.ok) {
+    if (el) el.innerHTML = `<span style="color:var(--success)">✓ API key OK · modelo: ${r.model}</span>`;
+  } else {
+    if (el) el.innerHTML = `<span style="color:var(--danger)">❌ ${r.error}</span>`;
+    alert('❌ Error API Anthropic:\n\n' + r.error + (r.fix ? '\n\n' + r.fix : ''));
+  }
+}
+
 
 async function clearAll() {
   if (!confirm('¿Eliminar todos los resultados?')) return;
@@ -90,26 +118,68 @@ function startPolling() {
 }
 
 // ── Status ─────────────────────────────────────────────────────────────────────
+function fmtTime(secs) {
+  if (!secs && secs !== 0) return '—';
+  if (secs < 60) return secs + 's';
+  return Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
+}
+
 function renderStatus(s) {
   if (!s) return;
-  const col = s.status === 'running' ? 'var(--warn)' :
-              s.status === 'completed' ? 'var(--success)' : 'var(--muted)';
-  const dot = s.status === 'running' ? '🟡' :
-              s.status === 'completed' ? '🟢' : '⚪';
+  const isRunning   = s.status === 'running';
+  const isCompleted = s.status === 'completed';
+  const col = isRunning ? 'var(--warn)' : isCompleted ? 'var(--success)' : 'var(--muted)';
+  const dot = isRunning ? '🟡' : isCompleted ? '🟢' : '⚪';
+
+  const elapsed = s.elapsed_seconds;
+  const avg     = s.avg_seconds_per_pair;
+  const phase   = s.phase || '';
+  const phaseLabel = phase.includes('llm_only') ? '🤖 LLM audit' :
+                     phase.includes('llm')       ? '🔬 Wiki+NLP+LLM' :
+                     phase.includes('wiki')      ? '📊 Wikipedia+NLP' : '';
+
+  const done    = s.pairs_analyzed || 0;
+  const total   = s.total_pairs    || 0;
+  const pct     = Math.round(s.progress || 0);
+
+  // Estimate remaining time
+  let etaHtml = '';
+  if (isRunning && avg && done > 0 && total > done) {
+    const remaining = Math.round(avg * (total - done));
+    etaHtml = `<span style="color:var(--muted);font-size:.77rem">ETA: ~${fmtTime(remaining)}</span>`;
+  }
+
   document.getElementById('status-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:${isRunning?'12':'0'}px">
       <span>${dot} <strong style="color:${col}">${(s.status||'').toUpperCase()}</strong></span>
-      <span style="color:var(--muted)">${s.current_step || ''}</span>
-      ${s.current_pair ? `<span style="color:var(--muted)">Par ${s.current_pair} / ${s.total_pairs}</span>` : ''}
-      ${s.valid_pairs != null ? `<span class="badge badge-ok">✓ ${s.valid_pairs} válidos</span>` : ''}
+      ${phaseLabel ? `<span class="badge badge-llm">${phaseLabel}</span>` : ''}
+      <span style="color:var(--muted);font-size:.83rem">${s.current_step || ''}</span>
+      ${s.valid_pairs   != null ? `<span class="badge badge-ok">✓ ${s.valid_pairs} válidos</span>` : ''}
       ${s.skipped_pairs != null ? `<span class="badge badge-skip">↷ ${s.skipped_pairs} omitidos</span>` : ''}
     </div>
-    ${s.status === 'running' ? `<div style="margin-top:10px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-        <span style="font-size:.73rem;color:var(--muted)">Progreso</span>
-        <span style="font-size:.73rem">${Math.round(s.progress||0)}%</span>
+    ${(isRunning || isCompleted) ? `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:${isRunning?'10':'0'}px;align-items:center">
+      <div style="text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--text)">${fmtTime(elapsed)}</div>
+        <div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Tiempo total</div>
       </div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${s.progress||0}%"></div></div>
+      <div style="text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--text)">${avg ? fmtTime(avg) : '—'}</div>
+        <div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Media / par</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.3rem;font-weight:700;color:var(--text)">${done}/${total}</div>
+        <div style="font-size:.67rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Pares</div>
+      </div>
+      ${etaHtml}
+    </div>` : ''}
+    ${isRunning ? `
+    <div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:.72rem;color:var(--muted)">Progreso</span>
+        <span style="font-size:.72rem;font-weight:600">${pct}%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
     </div>` : ''}`;
 }
 
@@ -201,8 +271,8 @@ function renderAggregate() {
     document.getElementById('no-llm-msg').style.display = 'none';
     mkBarChart('ch-bias-pairs',
       withLLM.map(r => `#${r.pair_id}`),
-      withLLM.map(r => r.llm_audit.bias_score_woman || 0),
-      withLLM.map(r => r.llm_audit.bias_score_man   || 0));
+      withLLM.map(r => r.llm_audit.bias_score_wiki_woman ?? r.llm_audit.bias_score_woman ?? 0),
+      withLLM.map(r => r.llm_audit.bias_score_wiki_man ?? r.llm_audit.bias_score_man ?? 0));
   } else {
     document.getElementById('no-llm-msg').style.display = 'block';
   }
@@ -303,16 +373,33 @@ function renderAudit() {
   const withAudit = results.filter(r => r.llm_audit && !r.llm_audit.error && r.both_in_wikipedia);
   const el = document.getElementById('audit-list');
   if (!withAudit.length) {
-    el.innerHTML = '<div class="loading" style="color:var(--muted)">Sin resultados LLM todavía.</div>';
+    // Show error details if LLM ran but failed
+    const withError = results.filter(r => r.llm_audit && r.llm_audit.error);
+    if (withError.length) {
+      const errMsg = withError[0].llm_audit.error || 'Error desconocido';
+      el.innerHTML = `<div class="alert alert-warn" style="margin:16px 0">
+        <strong>❌ Error en la Auditoría LLM</strong><br><br>
+        <code style="font-size:.82rem;white-space:pre-wrap">${errMsg}</code><br><br>
+        <strong>Posibles causas y soluciones:</strong><br>
+        • <b>API key expirada o sin crédito:</b> Ve a <a href="https://console.anthropic.com/settings/billing" target="_blank" style="color:var(--man)">console.anthropic.com</a> y verifica tu saldo<br>
+        • <b>API key incorrecta:</b> Edita el fichero <code>.env</code> en la raíz del proyecto y actualiza <code>ANTHROPIC_API_KEY=sk-ant-...</code><br>
+        • <b>Después de editar .env:</b> Ejecuta <code>docker compose up --build llm-auditor</code><br>
+        • <b>Para verificar la clave:</b> Abre <a href="http://localhost:8003/audit/test" target="_blank" style="color:var(--man)">localhost:8003/audit/test</a>
+      </div>`;
+    } else {
+      el.innerHTML = '<div class="loading" style="color:var(--muted)">Sin resultados LLM todavía. Pulsa "🤖 + Auditoría LLM" para ejecutar el análisis.</div>';
+    }
     return;
   }
   el.innerHTML = withAudit.map(r => {
     const a  = r.llm_audit;
-    const bw = a.bias_score_woman || 0;
-    const bm = a.bias_score_man   || 0;
+    // Support both v6.0 (bias_score_woman) and v6.1 (bias_score_wiki_woman) field names
+    const bw = a.bias_score_wiki_woman ?? a.bias_score_woman ?? 0;
+    const bm = a.bias_score_wiki_man   ?? a.bias_score_man   ?? 0;
     const bwc = bw>6?'score-high':bw>3?'score-mid':'score-low';
     const bmc = bm>6?'score-high':bm>3?'score-mid':'score-low';
-    const sw = a.stereotype_audit_woman || {};
+    // Support both old and new stereotype field names
+    const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
     const hasTexts = a.generated_bio_woman || r.wiki_woman?.raw_text;
     return `<div class="card" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
@@ -331,8 +418,8 @@ function renderAudit() {
         </div>
         <div>
           <div class="mrow"><span>Sesgo percibido ♂</span><span class="bias-score ${bmc}">${bm}/10</span></div>
-          <div class="mrow"><span>Atribución individual ♀</span><span>${((a.merit_attribution?.ratio_individual_A||0)*100).toFixed(0)}%</span></div>
-          <div class="mrow"><span>Balance narrativo Δ</span><span style="color:var(--muted)">${(a.narrative_balance_score||0).toFixed(3)}</span></div>
+          <div class="mrow"><span>Atribución individual ♀</span><span>${(((a.merit_attribution_wiki || a.merit_attribution || {})?.ratio_individual_A||0)*100).toFixed(0)}%</span></div>
+          <div class="mrow"><span>Balance narrativo Δ</span><span style="color:var(--muted)">${((a.narrative_balance_wiki ?? a.narrative_balance_score ?? 0)||0).toFixed(3)}</span></div>
         </div>
       </div>
       ${a.diagnostic_paragraph
@@ -567,7 +654,7 @@ function renderModalStats(r) {
     { lbl:'D. Epistémica', w:nw.epistemic_density||0,    m:nm.epistemic_density||0 },
     { lbl:'Ratio Agencia', w:nw.agency_ratio||0,         m:nm.agency_ratio||0 },
     { lbl:'Links Cient.',  w:nw.scientific_links_ratio||0,m:nm.scientific_links_ratio||0 },
-    { lbl:'Sesgo LLM',     w:a.bias_score_woman||0,      m:a.bias_score_man||0 },
+    { lbl:'Sesgo LLM',     w:(a.bias_score_wiki_woman??a.bias_score_woman??0), m:(a.bias_score_wiki_man??a.bias_score_man??0) },
   ];
   document.getElementById('m-stats-nlp').innerHTML = nlpRows.map(row => {
     const maxV = Math.max(row.w, row.m, 0.001);
@@ -597,10 +684,10 @@ function renderModalDiag(r) {
     el.innerHTML = '<div class="alert alert-warn">Sin datos LLM. Ejecuta el análisis completo.</div>';
     return;
   }
-  const sw = a.stereotype_audit_woman || {};
-  const sm = a.stereotype_audit_man   || {};
-  const fa = a.focus_analysis || {};
-  const ma = a.merit_attribution || {};
+  const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
+  const sm = a.stereotype_audit_wiki_m || a.stereotype_audit_man   || {};
+  const fa = a.focus_analysis_wiki || a.focus_analysis || {};
+  const ma = a.merit_attribution_wiki || a.merit_attribution || {};
   el.innerHTML = `
     ${a.diagnostic_paragraph ? `
       <div class="card-title" style="margin-bottom:6px">📋 Diagnóstico integrado</div>

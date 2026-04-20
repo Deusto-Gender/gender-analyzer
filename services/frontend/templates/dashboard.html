@@ -119,9 +119,15 @@
     <button class="btn btn-secondary" onclick="startAnalysis(true)">🤖 + Auditoría LLM</button>
     <button class="btn btn-outline" onclick="refresh()">🔄 Actualizar</button>
     <button class="btn btn-outline" onclick="clearAll()">🗑 Limpiar</button>
-    <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.82rem">
-      API Key: <input type="password" id="api-key" placeholder="sk-ant-...">
-    </label>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+    <span style="font-size:.8rem;color:var(--muted)">Estado API Anthropic:</span>
+    <span id="llm-key-status" style="font-size:.8rem;color:var(--muted)">—</span>
+    <button class="btn btn-outline" style="padding:4px 10px;font-size:.75rem" onclick="testLLMKey()">Verificar API key</button>
+    <span style="color:var(--muted);font-size:.77rem">
+      La API key se lee de <code style="color:var(--warn)">.env</code> al arrancar Docker.
+      Si la cambias, ejecuta: <code style="color:var(--warn)">docker compose up --build llm-auditor</code>
+    </span>
   </div>
   <div class="grid4" style="margin-bottom:20px">
     <div class="metric-card"><div class="metric-val" id="m-total">—</div><div class="metric-lbl">Pares totales</div></div>
@@ -278,6 +284,6 @@
 </div>
 
 <!-- Separate JS file — no inline logic -->
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ app_version }}"></script>
 </body>
 </html>
