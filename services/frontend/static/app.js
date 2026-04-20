@@ -120,6 +120,7 @@ function startPolling() {
 // ── Status ─────────────────────────────────────────────────────────────────────
 function fmtTime(secs) {
   if (!secs && secs !== 0) return '—';
+  secs = Math.round(secs);
   if (secs < 60) return secs + 's';
   return Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
 }
