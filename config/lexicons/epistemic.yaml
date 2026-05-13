@@ -8,18 +8,19 @@
 #   2. Expansión vía WordNet-es (sinónimos automáticos, si está disponible)
 #   3. Embeddings de spaCy para vecinos semánticos (umbral configurable)
 #
-# Se pueden añadir términos aquí sin reconstruir contenedores.
+# v2.0 — cobertura ampliada de términos epistémicos y de personalidad frecuentes
+# en biografías científicas en español. Se añaden participios adjetivales de uso
+# común en Wikipedia ES para describir la trayectoria de investigadores.
 
-version: "1.0"
+version: "2.0"
 
 # Umbral de similitud semántica para expansión por embeddings (0.0-1.0)
-# Sólo se aplica si el modelo spaCy tiene vectores (lg/md)
-semantic_expansion_threshold: 0.75
+semantic_expansion_threshold: 0.72
 
 # ── Adjetivos epistémicos ──────────────────────────────────────────────────────
-# Denotan capacidad intelectual, expertise o contribución cognitiva.
+# Denotan capacidad intelectual, expertise, logro cognitivo o liderazgo científico.
 epistemic:
-  # Capacidad intelectual
+  # Capacidad intelectual básica
   - brillante
   - genial
   - inteligente
@@ -28,15 +29,16 @@ epistemic:
   - lúcido
   - agudo
   - clarividente
+  - astuto
+  - astuta
 
-  # Expertise y competencia
+  # Expertise y competencia técnica
   - experto
   - experta
   - competente
   - capaz
   - cualificado
   - cualificada
-  - cualificado
   - especializado
   - especializada
   - versado
@@ -44,17 +46,26 @@ epistemic:
   - hábil
   - habilidoso
   - habilidosa
+  - diestro
+  - diestra
+  - avezado
+  - avezada
+  - consumado
+  - consumada
 
   # Talento y potencial
   - talentoso
   - talentosa
   - dotado
   - dotada
-  - brillante
   - precoz
   - prodigioso
   - prodigiosa
   - excepcional
+  - sobresaliente
+  - superdotado
+  - superdotada
+  - brillante
 
   # Sabiduría y conocimiento
   - sabio
@@ -67,8 +78,12 @@ epistemic:
   - culta
   - letrado
   - letrada
+  - docto
+  - docta
+  - instruido
+  - instruida
 
-  # Innovación y creatividad intelectual
+  # Innovación y liderazgo intelectual
   - innovador
   - innovadora
   - pionero
@@ -80,8 +95,17 @@ epistemic:
   - original
   - inventivo
   - inventiva
+  - disruptivo
+  - disruptiva
+  - revolucionario
+  - revolucionaria
+  - transformador
+  - transformadora
+  - rompedor
+  - rompedora
+  - trailblazer      # anglicismo ocasional
 
-  # Reconocimiento académico
+  # Reconocimiento y reputación académica
   - distinguido
   - distinguida
   - reconocido
@@ -101,11 +125,26 @@ epistemic:
   - destacado
   - destacada
   - notable
-  - sobresaliente
   - influyente
   - referente
+  - aclamado
+  - aclamada
+  - galardonado
+  - galardonada
+  - premiado
+  - premiada
+  - laureado
+  - laureada
+  - condecorado
+  - condecorada
+  - homenajeado
+  - homenajeada
+  - nominado
+  - nominada
+  - seleccionado
+  - seleccionada
 
-  # Rigor y método
+  # Rigor y método científico
   - riguroso
   - rigurosa
   - metódico
@@ -114,27 +153,86 @@ epistemic:
   - sistemática
   - analítico
   - analítica
-  - crítico   # en sentido cognitivo positivo
   - meticuloso
   - meticulosa
   - preciso
   - precisa
+  - exhaustivo
+  - exhaustiva
+  - pormenorizado
+  - pormenorizada
+  - exacto
+  - exacta
+  - objetivo
+  - objetiva
 
-  # Liderazgo intelectual
-  - líder
-  - vanguardista
-  - revolucionario
-  - revolucionaria
-  - transformador
-  - transformadora
-  - influyente
+  # Productividad científica / impacto
   - prolífico
   - prolífica
+  - fecundo
+  - fecunda
+  - influyente
+  - productivo
+  - productiva
+  - impactante
+  - citado
+  - citada
+  - referenciado
+  - referenciada
+  - publicado
+  - publicada
+  - acreditado
+  - acreditada
+  - avalado
+  - avalada
+
+  # Liderazgo y posición
+  - líder
+  - director
+  - directora
+  - rector
+  - rectora
+  - decano
+  - decana
+  - catedrático
+  - catedrática
+  - vanguardista
+  - pionero
+  - pionera
+  - fundador
+  - fundadora
+  - cofundador
+  - cofundadora
+  - creador
+  - creadora
+  - impulsor
+  - impulsora
+  - promotor
+  - promotora
+  - coordinador
+  - coordinadora
+  - responsable
+
+  # Formación y habilitación
+  - doctorado
+  - licenciado
+  - licenciada
+  - graduado
+  - graduada
+  - postdoctoral
+  - habilitado
+  - habilitada
+  - acreditado
+  - acreditada
+  - certificado
+  - certificada
+  - titulado
+  - titulada
 
 # ── Adjetivos de personalidad ──────────────────────────────────────────────────
-# Describen rasgos conductuales o emocionales, NO capacidad intelectual.
+# Describen rasgos conductuales, emocionales o morales, NO capacidad intelectual.
 personality:
-  # Laboriosidad / esfuerzo (vs. talento innato)
+  # Laboriosidad / esfuerzo
   - trabajador
   - trabajadora
   - laborioso
@@ -147,6 +245,14 @@ personality:
   - incansable
   - infatigable
   - diligente
+  - aplicado
+  - aplicada
+  - dedicado
+  - dedicada
+  - entregado
+  - entregada
+  - comprometido
+  - comprometida
 
   # Virtudes relacionales
   - amable
@@ -162,6 +268,16 @@ personality:
   - colaboradora
   - cooperador
   - cooperadora
+  - sociable
+  - comunicativo
+  - comunicativa
+  - cercano
+  - cercana
+  - accesible
+  - abierto
+  - abierta
+  - emprendedor
+  - emprendedora
 
   # Virtudes morales
   - honesto
@@ -169,12 +285,18 @@ personality:
   - íntegro
   - íntegra
   - responsable
-  - comprometido
-  - comprometida
   - ético
   - ética
   - recto
   - recta
+  - justo
+  - justa
+  - transparente
+  - coherente
+  - fiel
+  - leal
+  - comprometido
+  - comprometida
 
   # Modestia / discreción
   - humilde
@@ -186,22 +308,28 @@ personality:
   - sencilla
   - reservado
   - reservada
+  - austero
+  - austera
 
-  # Energía / actitud
+  # Energía y actitud
   - activo
   - activa
   - dinámico
   - dinámica
-  - emprendedor
-  - emprendedora
   - entusiasta
   - apasionado
   - apasionada
   - optimista
   - positivo
   - positiva
+  - motivado
+  - motivada
+  - enérgico
+  - enérgica
+  - proactivo
+  - proactiva
 
-  # Resiliencia
+  # Resiliencia y fortaleza
   - valiente
   - luchador
   - luchadora
@@ -209,33 +337,106 @@ personality:
   - fuerte
   - decidido
   - decidida
+  - firme
+  - persistente
+  - inquebrantable
+  - combativo
+  - combativa
 
-  # Cuidado / emociones
+  # Cuidado y empatía
   - cariñoso
   - cariñosa
   - sensible
   - empático
   - empática
-  - dedicado
-  - dedicada
   - vocacional
+  - altruista
+  - servicial
+
+  # Creatividad / carácter artístico (personalidad, no epistémico técnico)
+  - curioso
+  - curiosa
+  - inquieto
+  - inquieta
 
 # ── Adjetivos a ignorar (ni epistémicos ni de personalidad) ───────────────────
-# Neutros, técnicos, cuantitativos, nacionales, etc.
+# Nacionales, ordinales, cuantitativos, temporales, evaluativos genéricos.
 ignore:
+  # Gentilicios y demónimos
   - español
   - española
   - europeo
   - europea
   - internacional
   - nacional
+  - americano
+  - americana
+  - estadounidense
+  - latinoamericano
+  - latinoamericana
+  - iberoamericano
+  - iberoamericana
+  - mundial
+  - global
+  - extranjero
+  - extranjera
+  - andaluz
+  - andaluza
+  - catalán
+  - catalana
+  - gallego
+  - gallega
+  - vasco
+  - vasca
+  - madrileño
+  - madrileña
+
+  # Ordinales y cuantitativos
   - primer
   - primera
   - segundo
   - segunda
+  - tercero
+  - tercera
+  - cuarto
+  - cuarta
+  - único
+  - única
+  - solo
+  - sola
+  - múltiple
+  - numeroso
+  - numerosa
+  - varios
+  - varias
+  - escaso
+  - escasa
+  - abundante
+
+  # Temporales
   - actual
+  - presente
+  - pasado
+  - pasada
+  - futuro
+  - futura
+  - previo
+  - previa
+  - anterior
+  - posterior
+  - reciente
   - nuevo
   - nueva
+  - antiguo
+  - antigua
+  - moderno
+  - moderna
+  - contemporáneo
+  - contemporánea
+  - temprano
+  - temprana
+
+  # Evaluativos genéricos / relacionales
   - gran
   - grande
   - principal
@@ -249,5 +450,46 @@ ignore:
   - diferente
   - diverso
   - diversa
-  - varios
-  - varias
+  - conjunto
+  - conjunta
+  - conjunto
+  - relacionado
+  - relacionada
+  - asociado
+  - asociada
+  - vinculado
+  - vinculada
+  - similar
+  - equivalente
+  - determinado
+  - determinada
+  - concreto
+  - concreta
+  - específico
+  - específica
+  - general
+  - particular
+  - especial
+
+  # Adjetivos participiales de procesos neutros (no logros)
+  - nombrado
+  - nombrada
+  - elegido
+  - elegida
+  - elegida
+  - designado
+  - designada
+  - asignado
+  - asignada
+  - contratado
+  - contratada
+  - incorporado
+  - incorporada
+  - admitido
+  - admitida
+  - invitado
+  - invitada
+  - seleccionado     # en contextos genéricos (no científicos)
+  - convocado
+  - convocada
+

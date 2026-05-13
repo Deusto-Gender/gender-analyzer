@@ -4,16 +4,22 @@
 #
 # Se buscan estas cadenas (lowercase) en los títulos de enlaces internos
 # de Wikipedia y en los nombres de categorías del artículo.
+#
+# v2.0 — cobertura ampliada de disciplinas, instituciones, metodologías,
+# instrumentación científica y vocabulario de publicaciones académicas.
 
-version: "1.0"
+version: "2.0"
 
 scientific_keywords:
-  # Disciplinas STEM
+  # ── Disciplinas STEM ──────────────────────────────────────────────────────
   - ciencia
+  - científica
+  - científico
   - investigación
   - tecnología
   - ingeniería
   - matemática
+  - matemáticas
   - física
   - química
   - biología
@@ -23,89 +29,276 @@ scientific_keywords:
   - robótica
   - inteligencia
   - nanotecnología
+  - nanociencia
+  - nanomaterial
+  - nanopartícula
   - astrofísica
-  - astro
   - astronomía
+  - astro
   - biotecnología
   - neurociencia
+  - neurología
+  - neurofisiología
   - biomedicina
+  - biomédica
+  - biomédico
   - bioinformática
+  - biología computacional
+  - biología molecular
+  - biología celular
   - geología
+  - geofísica
+  - geografía
   - ecología
+  - medioambiente
   - genética
   - genómica
   - proteómica
+  - metabolómica
+  - transcriptómica
   - epidemiología
   - estadística
+  - bioestadística
   - algorítmica
+  - algoritmo
   - telecomunicación
   - electrónica
+  - microelectrónica
   - fotónica
   - óptica
   - mecánica
   - termodinámica
   - climatología
   - oceanografía
+  - hidrología
+  - meteorología
+  - agronomía
+  - farmacología
+  - farmacia
+  - oncología
+  - inmunología
+  - virología
+  - microbiología
+  - parasitología
+  - toxicología
+  - radiología
+  - cardiología
+  - neurología
+  - endocrinología
+  - pediatría
+  - ginecología
+  - obstetricia
+  - cirugía
+  - anestesia
+  - odontología
+  - veterinaria
+  - antropología física
+  - arqueología
+  - paleontología
+  - cristalografía
+  - mineralogía
+  - espectroscopía
+  - cromatografía
+  - electrochemistry
+  - electroquímica
+  - magnetismo
+  - superconductividad
+  - plasma
+  - nuclear
+  - radioactividad
+  - cuántica
+  - cuántico
+  - relatividad
+  - mecánica cuántica
+  - cosmología
+  - astropartícula
+  - energía solar
+  - energía eólica
+  - energía renovable
+  - sostenibilidad
+  - cambio climático
+  - contaminación
+  - medio ambiente
 
-  # Actividad investigadora
-  - laboratorio
-  - universidad
-  - instituto
-  - centro de investigación
-  - consejo superior
-  - csic
-  - tesis
-  - doctorado
-  - cátedra
-  - máster
-  - grado
-  - licenciatura
-  - publicación
-  - artículo científico
-  - revista científica
-  - journal
-  - congreso
-  - conferencia científica
-  - simposio
-  - seminario académico
-  - proyecto de investigación
-  - beca
-  - subvención
-  - patente
-  - algoritmo
-  - modelo
-  - experimento
-  - hipótesis
-  - teoría
-  - paradigma
-  - metodología científica
-
-  # Reconocimientos científicos
-  - premio
-  - galardón
-  - medalla
-  - distinción científica
-  - fellowship
-  - academia de ciencias
-  - real academia
-
-  # Tecnología específica
-  - software
-  - hardware
+  # ── Subdisciplinas de computación / IA ────────────────────────────────────
   - inteligencia artificial
   - aprendizaje automático
   - machine learning
   - deep learning
   - red neuronal
   - big data
-  - nube
-  - blockchain
+  - minería de datos
+  - procesamiento del lenguaje
+  - visión por computador
+  - visión artificial
+  - computación cuántica
   - ciberseguridad
-  - satélite
-  - telescopio
+  - criptografía
+  - blockchain
+  - cloud computing
+  - computación en la nube
+  - supercomputador
+  - supercomputación
+  - paralelismo
+  - arquitectura de computadores
+  - sistemas distribuidos
+  - internet de las cosas
+  - robótica autónoma
+  - vehículo autónomo
+  - procesamiento de señales
+  - reconocimiento de patrones
+  - soft computing
+  - lógica difusa
+  - algoritmos genéticos
+  - optimización
+  - simulación
+  - modelado
+
+  # ── Actividad investigadora e instituciones ────────────────────────────────
+  - laboratorio
+  - universidad
+  - instituto
+  - facultad
+  - escuela técnica
+  - escuela superior
+  - centro de investigación
+  - centro nacional
+  - consejo superior
+  - csic
+  - cnrs
+  - mit
+  - nasa
+  - esa
+  - cern
+  - conicet
+  - conacyt
+  - fondecyt
+  - nist
+  - nih
+  - nsf
+  - erc
+  - horizon
+  - tesis
+  - doctorado
+  - predoctoral
+  - postdoctoral
+  - cátedra
+  - máster
+  - grado
+  - licenciatura
+  - departamento de
+  - grupo de investigación
+  - línea de investigación
+
+  # ── Publicación y difusión científica ─────────────────────────────────────
+  - publicación
+  - artículo científico
+  - artículo de investigación
+  - revista científica
+  - journal
+  - nature
+  - science
+  - cell
+  - pnas
+  - congreso
+  - conferencia científica
+  - simposio
+  - workshop
+  - seminario académico
+  - proceedings
+  - preprint
+  - arxiv
+  - doi
+  - índice h
+  - factor de impacto
+  - citas
+  - revisión sistemática
+  - meta-análisis
+
+  # ── Financiación y reconocimientos ────────────────────────────────────────
+  - proyecto de investigación
+  - plan nacional
+  - horizonte 2020
+  - horizon europe
+  - beca
+  - beca fulbright
+  - beca marie curie
+  - beca juan de la cierva
+  - beca ramón y cajal
+  - subvención
+  - financiación
+  - patente
+  - licencia tecnológica
+  - spin-off
+  - startup tecnológica
+  - premio nacional de investigación
+  - premio príncipe de asturias
+  - premio rey jaime
+  - medalla de oro csic
+  - galardón científico
+  - fellowship científico
+  - academia de ciencias
+  - real academia
+  - academia nacional
+  - academia europea
+  - honoris causa
+  - miembro correspondiente
+  - miembro honorífico
+
+  # ── Instrumentación y técnicas ────────────────────────────────────────────
   - microscopio
+  - microscopía
+  - espectrómetro
+  - espectroscopia
+  - resonancia magnética
+  - tomografía
+  - cristalografía de rayos x
+  - difracción
+  - fluorescencia
+  - láser
+  - interferometría
   - sensor
   - biosensor
-  - nanomaterial
-  - supercomputador
-  - computación cuántica
+  - nanoplasmónica
+  - plasmónica
+  - lab-on-a-chip
+  - microfluidica
+  - secuenciación
+  - pcr
+  - electroforesis
+  - cromatografía
+  - espectrometría de masas
+  - modelado molecular
+  - dinámica molecular
+  - simulación computacional
+  - superordenador
+  - acelerador de partículas
+  - detector de partículas
+  - satélite científico
+  - telescopio espacial
+  - radiotelescopio
+  - sonda espacial
+
+  # ── Términos de transferencia y aplicación ─────────────────────────────────
+  - transferencia tecnológica
+  - innovación
+  - prototipo
+  - demostrador
+  - prueba de concepto
+  - validación clínica
+  - ensayo clínico
+  - diagnóstico
+  - terapia
+  - vacuna
+  - fármaco
+  - medicamento
+  - dispositivo médico
+  - implante
+  - exoesqueleto
+  - prótesis
+  - ortesis
+  - material avanzado
+  - material compuesto
+  - nanomedicina
+  - theranostics
+

@@ -62,11 +62,12 @@ async def clear_wiki_cache(client: httpx.AsyncClient):
         logger.warning(f"Cache clear failed (non-fatal): {e}")
 
 
-async def wiki_extract(client, nombre, genero, wiki_hint, area) -> Dict:
+async def wiki_extract(client, nombre, genero, wiki_hint, area, direct_wiki_url=None) -> Dict:
     try:
         r = await client.post(f"{WIKI_SVC}/extract", json={
             "nombre": nombre, "genero": genero,
-            "wiki_hint": wiki_hint, "area": area
+            "wiki_hint": wiki_hint, "area": area,
+            "direct_wiki_url": direct_wiki_url,
         }, timeout=90)
         return r.json()
     except Exception as e:
@@ -137,9 +138,11 @@ async def process_pair(client: httpx.AsyncClient, pair: Dict,
         # Wikipedia: woman + man in parallel (already was parallel)
         wiki_w, wiki_m = await asyncio.gather(
             wiki_extract(client, pair["woman"], "M",
-                         pair.get("woman_wiki_hint"), pair.get("area")),
+                         pair.get("woman_wiki_hint"), pair.get("area"),
+                         pair.get("woman_direct_wiki_url")),
             wiki_extract(client, pair["man"],   "H",
-                         pair.get("man_wiki_hint"),   pair.get("area"))
+                         pair.get("man_wiki_hint"),   pair.get("area"),
+                         pair.get("man_direct_wiki_url")),
         )
 
         both = (wiki_w.get("exists_in_wikipedia") and

@@ -8,10 +8,13 @@
 #
 # Añadir o quitar términos editando este fichero. No requiere
 # reconstruir el contenedor Docker.
+#
+# v2.0 — cobertura ampliada con términos adicionales de biología familiar,
+# roles de cuidado, vida doméstica y referencias personales.
 
-version: "1.0"
+version: "2.0"
 
-# Familia nuclear
+# ── Familia nuclear ────────────────────────────────────────────────────────────
 familia_nuclear:
   - madre
   - padre
@@ -21,53 +24,89 @@ familia_nuclear:
   - hija
   - hermano
   - hermana
+  - progenitor
+  - progenitora
+  - nacido
+  - nacida
+  - materno
+  - materna
+  - paterno
+  - paterna
+  - fraterno
+  - fraterna
+  - familiar
 
-# Pareja y matrimonio
+# ── Pareja y matrimonio ────────────────────────────────────────────────────────
 pareja_matrimonio:
   - esposa
   - esposo
   - marido
-  - mujer         # sólo cuando es sinónimo de esposa — spaCy desambigua por contexto
+  - cónyuge
   - pareja
   - matrimonio
   - casamiento
-  - casar         # lema: cubre casada/casado/casaron
+  - casar
   - boda
+  - nupcial
   - novio
   - novia
-  - divorci       # lema parcial: divorcio/divorciarse/divorciado
+  - prometido
+  - prometida
+  - divorci
   - viudo
   - viuda
+  - soltero
+  - soltera
 
-# Familia extendida
+# ── Familia extendida ──────────────────────────────────────────────────────────
 familia_extendida:
   - abuelo
   - abuela
+  - bisabuelo
+  - bisabuela
   - nieto
   - nieta
   - tío
   - tía
+  - sobrino
+  - sobrina
   - suegro
   - suegra
+  - yerno
+  - nuera
   - cuñado
   - cuñada
   - primo
   - prima
+  - pariente
+  - parentesco
+  - linaje
+  - ascendiente
+  - descendiente
+  - descendencia
+  - antepasado
+  - estirpe
 
-# Hogar y espacio doméstico
+# ── Hogar y espacio doméstico ──────────────────────────────────────────────────
 hogar:
   - hogar
-  - casa
-  - vivienda
   - domicilio
   - doméstico
   - doméstica
+  - residencia
+  - vivienda
+  - cotidiano
+  - cotidiana
+  - rutinario
+  - rutinaria
 
-# Crianza y cuidados
+# ── Crianza y cuidados ─────────────────────────────────────────────────────────
 crianza:
   - crianza
   - cuidado
   - cuidar
+  - cuidadora
+  - cuidador
   - maternidad
   - paternidad
   - embarazo
@@ -78,23 +117,42 @@ crianza:
   - bebé
   - niñez
   - infancia
+  - adolescencia
+  - adopción
+  - adoptar
+  - conciliación
+  - tutela
+  - orfandad
 
-# Vida privada y roles tradicionales
-vida_privada:
-  - familiar       # adjetivo: vida familiar
-  - pariente
-  - parentesco
-  - linaje
-  - descendencia
-  - descendiente
+# ── Vida personal y relaciones ─────────────────────────────────────────────────
+vida_personal:
+  - personal
+  - privado
+  - privada
+  - íntimo
+  - íntima
   - convivencia
   - convivir
-  - hogareño
-  - cuidador
-  - cuidadora
+  - afectivo
+  - afectiva
+  - sentimental
+  - romántico
+  - romántica
 
-# Términos compuestos detectados como secuencias de lemas
-# (procesados por separado en el código)
+# ── Roles de género domésticos ─────────────────────────────────────────────────
+roles_genero:
+  - ama
+  - cocinero
+  - cocinera
+  - sirvienta
+  - sirviente
+  - lavar
+  - planchar
+  - coser
+  - bordar
+  - tejer
+
+# ── Términos compuestos detectados como secuencias de texto ───────────────────
 compound_terms:
   - "madre soltera"
   - "padre soltero"
@@ -109,3 +167,27 @@ compound_terms:
   - "tareas domésticas"
   - "labores domésticas"
   - "familia política"
+  - "entorno familiar"
+  - "conciliación laboral"
+  - "conciliación familiar"
+  - "responsabilidades familiares"
+  - "cuidado de los hijos"
+  - "cuidado de sus hijos"
+  - "baja maternal"
+  - "baja por maternidad"
+  - "permiso de maternidad"
+  - "permiso de paternidad"
+  - "vida sentimental"
+  - "relación sentimental"
+  - "su marido"
+  - "su esposo"
+  - "su esposa"
+  - "su pareja"
+  - "su compañero"
+  - "su compañera"
+  - "su familia"
+  - "está casada"
+  - "está casado"
+  - "tiene hijos"
+  - "tiene tres hijos"
+  - "tiene dos hijos"
