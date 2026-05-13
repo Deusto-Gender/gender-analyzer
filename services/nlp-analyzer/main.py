@@ -112,26 +112,63 @@ except ImportError:
 
 def wordnet_expand_epistemic(lemma: str) -> Optional[str]:
     """
-    Use WordNet to classify an unknown adjective.
-    Returns 'epistemic', 'personality', or None.
+    Use WordNet to classify an unknown adjective as 'epistemic' or 'personality'.
+
+    Strategy:
+      1. Get synsets for the Spanish lemma (lang='spa' finds synsets containing
+         this Spanish word — definitions are always in English in OMW).
+      2. Check English definitions using English signal words (correct — definitions
+         are in English regardless of input language).
+      3. Also check lemma names across all languages in the synset, comparing
+         against known Spanish seed sets — this improves coverage significantly
+         since OMW includes Spanish synonyms per synset.
     """
     if not HAS_WORDNET:
         return None
+
+    # Spanish seeds for lemma-level matching (complement to English definition signals)
+    ep_lemmas_es = {
+        "brillante", "inteligente", "sabio", "experto", "talentoso", "competente",
+        "hábil", "capaz", "genial", "erudito", "perspicaz", "innovador", "pionero",
+        "visionario", "riguroso", "analítico", "preciso", "docto", "versado"
+    }
+    pers_lemmas_es = {
+        "amable", "honesto", "humilde", "trabajador", "dedicado", "generoso",
+        "solidario", "valiente", "perseverante", "empático", "modesto", "diligente",
+        "tenaz", "cariñoso", "comprometido", "íntegro", "laborioso", "entusiasta"
+    }
+
+    # English definition signals (correct to use English here — OMW definitions
+    # are always in English, even for synsets found via Spanish lemmas)
+    ep_signals   = ["intellig", "intellect", "expert", "knowledge", "wisdom",
+                    "skill", "talent", "brilliant", "genius", "capable", "learned",
+                    "scholarly", "innovative", "analytical", "precise"]
+    pers_signals = ["kind", "friendly", "honest", "hard-working", "diligent",
+                    "humble", "modest", "brave", "dedicated", "generous",
+                    "empathetic", "loyal", "compassionate", "courageous"]
+
     try:
         synsets = wn.synsets(lemma, pos=wn.ADJ, lang='spa')
         for syn in synsets:
-            # Check if any definition word overlaps with known categories
+            # Check 1: English definition (always English in OMW — correct as-is)
             definition = syn.definition().lower()
-            ep_signals = ["intellig", "intellect", "expert", "knowledge", "wisdom",
-                          "skill", "talent", "brilliant", "genius", "capable"]
-            pers_signals = ["kind", "friendly", "honest", "hard-working", "diligent",
-                            "humble", "modest", "brave", "dedicated", "generous"]
             if any(s in definition for s in ep_signals):
                 return "epistemic"
             if any(s in definition for s in pers_signals):
                 return "personality"
+
+            # Check 2: Lemma names in the synset (multilingual — check Spanish ones)
+            # This catches cases where the definition is vague but a known Spanish
+            # synonym appears in the same synset
+            synset_lemmas = set(syn.lemma_names('spa'))  # Spanish synonyms in synset
+            if synset_lemmas & ep_lemmas_es:
+                return "epistemic"
+            if synset_lemmas & pers_lemmas_es:
+                return "personality"
+
     except Exception:
         pass
+
     return None
 
 
