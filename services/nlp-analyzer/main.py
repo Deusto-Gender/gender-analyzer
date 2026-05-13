@@ -202,10 +202,16 @@ def compute_domesticity_index(doc) -> Tuple[float, List[str], str]:
     index = round((count / total_alpha) * 1000, 6)
 
     if index == 0.0:
+        content_lemmas = [
+            t.lemma_.lower() for t in doc
+            if t.is_alpha and not t.is_stop and len(t.lemma_) > 2
+        ]
+        top_content = [w for w, _ in Counter(content_lemmas).most_common(8)]
         explanation = (
             f"Ninguno de los {len(DOMESTIC_LEMMAS)} lemas domésticos apareció "
             f"en el texto ({total_alpha} tokens). Esto es esperable en biografías "
             "puramente centradas en logros científicos."
+            f"Lemmas de contenido más frecuentes en el texto: {top_content}."
         )
     else:
         explanation = f"{count} ocurrencias en {total_alpha} tokens"
@@ -250,24 +256,30 @@ def compute_epistemic_density(doc) -> Tuple[float, int, int, List[str], str]:
     ep_count = 0
     pers_count = 0
     all_adjs = []
+    unclassified_adjs = []
 
     for token in doc:
         if token.pos_ == "ADJ":
-            all_adjs.append(token.lemma_.lower())
+            lemma = token.lemma_.lower()
+            all_adjs.append(lemma)
             classification = classify_adjective(token)
             if classification == "epistemic":
                 ep_count += 1
             elif classification == "personality":
                 pers_count += 1
+            else:
+                unclassified_adjs.append(lemma)
 
     total = ep_count + pers_count
 
     if total == 0:
+        top_unclassified = [a for a, _ in Counter(unclassified_adjs).most_common(8)]
         explanation = (
             f"No se detectaron adjetivos epistémicos ni de personalidad "
             f"({len(all_adjs)} adjetivos totales detectados). "
             f"Lexicón epistémico: {len(ADJ_EPISTEMIC)} términos, "
             f"personalidad: {len(ADJ_PERSONALITY)} términos. "
+            f"Adjetivos no clasificados más frecuentes: {top_unclassified}. "
             "Posible causa: texto corto, léxico especializado no cubierto, "
             "o artículo sin adjetivos valorativos."
         )
@@ -317,8 +329,13 @@ def compute_agency_ratio(doc) -> Tuple[float, int, int, str]:
 
     if pasivos == 0:
         if activos == 0:
+            n_tokens = len(tokens)
+            n_alpha = sum(1 for t in tokens if t.is_alpha)
+            pos_counts = Counter(t.pos_ for t in tokens if t.is_alpha)
+            top_pos = ", ".join(f"{p}:{c}" for p, c in pos_counts.most_common(5))
             explanation = (
-                "Texto vacío o sin verbos detectados. "
+                f"Texto vacío o sin verbos detectados ({n_tokens} tokens, {n_alpha} alfabéticos). "
+                f"POS detectados: [{top_pos}]. "
                 "El ratio de agencia no puede calcularse sin verbos. "
                 "Verificar que el texto fue extraído correctamente de Wikipedia."
             )
