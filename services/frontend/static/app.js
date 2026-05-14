@@ -99,6 +99,7 @@ async function refresh() {
   renderStatus(st);
   renderSummaryCards();
   renderDashboard();
+  updateExportButton();
 }
 
 function startPolling() {
@@ -193,6 +194,7 @@ function renderSummaryCards() {
   document.getElementById('m-skip').textContent  = skip;
   document.getElementById('m-cov').textContent   =
     results.length ? Math.round((valid/total)*100)+'%' : '—';
+  updateExportButton();
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────────
@@ -398,6 +400,7 @@ function renderAudit() {
 
   // Show export button when we have LLM results
   if (exportWrap) exportWrap.style.display = 'block';
+  updateExportButton();
 
   el.innerHTML = withAudit.map(r => {
     const a  = r.llm_audit;
@@ -438,6 +441,23 @@ function renderAudit() {
 }
 
 // ── Excel export ───────────────────────────────────────────────────────────────
+// ── Export button visibility ────────────────────────────────────────────────────
+function updateExportButton() {
+  const btn = document.getElementById('global-export-btn');
+  if (!btn) return;
+  const valid = results.filter(r => r.both_in_wikipedia && !r.skipped);
+  if (!valid.length) {
+    btn.style.display = 'none';
+    return;
+  }
+  const hasLLM = valid.some(r => r.llm_audit && !r.llm_audit.error);
+  btn.style.display = 'inline-flex';
+  btn.textContent = hasLLM ? '📥 Exportar Excel (Wiki+NLP+LLM)' : '📥 Exportar Excel (Wiki+NLP)';
+  // Also show/hide the in-tab button
+  const wrap = document.getElementById('export-xlsx-wrap');
+  if (wrap) wrap.style.display = valid.length ? 'block' : 'none';
+}
+
 function exportResultsXLSX() {
   if (typeof XLSX === 'undefined') {
     alert('SheetJS no está disponible. Recarga la página e inténtalo de nuevo.');

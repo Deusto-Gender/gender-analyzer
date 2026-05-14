@@ -120,6 +120,12 @@
     <button class="btn btn-secondary" onclick="startAnalysis(true)">🤖 + Auditoría LLM</button>
     <button class="btn btn-outline" onclick="refresh()">🔄 Actualizar</button>
     <button class="btn btn-outline" onclick="clearAll()">🗑 Limpiar</button>
+    <button id="global-export-btn" class="btn btn-primary"
+            onclick="exportResultsXLSX()"
+            style="background:#1A5F3F;border-color:#1A5F3F;display:none"
+            title="Descargar Excel con todas las métricas por par, por persona y agregadas">
+      📥 Exportar Excel
+    </button>
   </div>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
     <span style="font-size:.8rem;color:var(--muted)">Estado API Anthropic:</span>
