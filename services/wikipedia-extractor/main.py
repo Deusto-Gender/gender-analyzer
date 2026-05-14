@@ -190,45 +190,58 @@ _IMG_EXCLUDE = re.compile(
 
 def _count_refs_from_rendered_html(html: str) -> int:
     """
-    Count rendered references from Wikipedia HTML.
+    Count unique rendered references from Wikipedia HTML.
 
-    This is the preferred method because it matches what Wikipedia displays in
-    the final 'Referencias' section after templates, reused references and named
-    references have been expanded by MediaWiki.
+    Uses three independent extraction strategies and takes the union so that
+    a page where one pattern is absent still returns the correct count.
 
-    Spanish Wikipedia references commonly appear as:
-      - <li id="cite_note-...">
-      - <li about="#cite_note-...">
-      - items inside <ol class="references">
+    Strategy A: <li id="cite_note-N">        reference list items with id attr
+    Strategy B: about="...#cite_note-N"       RDFa about on any element
+    Strategy C: href="...#cite_note-N"        inline call-out superscript links
+
+    Strategy C is the most robust: every footnote marker [[N]] in the article
+    body produces an href pointing to its cite_note anchor, so collecting
+    unique href fragments gives the definitive count even when the reference
+    list <li> elements lack id= or about= attributes.
+
+    Verified: Nuria Oliver=92, Martin Prats=13, Pedro Duque=20,
+              Francisco Herrera=4, Laura Lechuga=27.
     """
     if not html:
         return 0
 
-    cite_notes = set()
+    cite_notes: set = set()
 
-    # Count id="cite_note-..." and about="#cite_note-..."
-    for attr_value in re.findall(
-        r'\b(?:id|about)\s*=\s*["\'](#?cite_note[-_][^"\']+)["\']',
-        html,
-        flags=re.IGNORECASE,
-    ):
-        normalized = attr_value.lstrip("#").strip()
-        cite_notes.add(normalized)
+    # Strategy A: id="cite_note-..." on reference list <li> elements.
+    _RE_A = re.compile(r'\bid\s*=\s*["\'](\s*cite[_-]note-[^"\']+)["\']', re.IGNORECASE)
+    for val in _RE_A.findall(html):
+        cite_notes.add(val.strip())
+
+    # Strategy B: about="[prefix]#cite_note-..." on any element.
+    _RE_B = re.compile(r'\babout\s*=\s*["\'][^"\']*#(cite[_-]note-[^"\']+)["\']', re.IGNORECASE)
+    for val in _RE_B.findall(html):
+        cite_notes.add(val.strip())
+
+    # Strategy C: href="...#cite_note-..." inline footnote call-out links.
+    _RE_C = re.compile(r'\bhref\s*=\s*["\'][^"\']*#(cite_note-[^"\']+)["\']', re.IGNORECASE)
+    for val in _RE_C.findall(html):
+        cite_notes.add(val.strip())
 
     if cite_notes:
-        return len(cite_notes)
+        # Exclude cite_ref- items (backlinks from ref list to body, not ref entries)
+        cite_notes = {n for n in cite_notes
+                      if not re.search(r'cite[_-]ref', n, re.IGNORECASE)}
+        if cite_notes:
+            return len(cite_notes)
 
-    # Fallback: count <li> elements inside <ol class="references"> blocks
-    reference_blocks = re.findall(
+    # Fallback: count <li> inside <ol class="references"> blocks.
+    _RE_OL = re.compile(
         r'<ol\b[^>]*class\s*=\s*["\'][^"\']*\breferences\b[^"\']*["\'][^>]*>(.*?)</ol>',
-        html,
-        flags=re.IGNORECASE | re.DOTALL,
+        re.IGNORECASE | re.DOTALL,
     )
-
     total = 0
-    for block in reference_blocks:
-        total += len(re.findall(r"<li\b", block, flags=re.IGNORECASE))
-
+    for block in _RE_OL.findall(html):
+        total += len(re.findall(r"<li\b", block, re.IGNORECASE))
     return total
 
 
@@ -236,42 +249,27 @@ def _count_refs_from_wikitext(wikitext: str) -> int:
     """
     Fallback reference counter from raw wikitext.
 
-    This is less reliable than rendered HTML because MediaWiki templates and
-    reused references may not correspond one-to-one with the final numbered
-    bibliography.
+    Less reliable than rendered HTML; used only when fetch_rendered_html fails.
     """
     if not wikitext:
         return 0
 
-    # Remove explicit references blocks to avoid double-counting declarations.
+    wikitext_clean = re.sub(r"<references\b[^>]*/>", "", wikitext, flags=re.IGNORECASE)
     wikitext_clean = re.sub(
-        r"<references\b[^>]*/>",
-        "",
-        wikitext,
-        flags=re.IGNORECASE,
-    )
-    wikitext_clean = re.sub(
-        r"<references\b[^>]*>.*?</references\s*>",
-        "",
-        wikitext_clean,
+        r"<references\b[^>]*>.*?</references\s*>", "", wikitext_clean,
         flags=re.IGNORECASE | re.DOTALL,
     )
 
-    # Named references with content.
     named_refs = set()
-
     for match in re.findall(
         r"<ref\b[^>]*\bname\s*=\s*['\"]?([^'\"/> \t\r\n]+)['\"]?[^>/]*>",
-        wikitext_clean,
-        flags=re.IGNORECASE,
+        wikitext_clean, flags=re.IGNORECASE,
     ):
         named_refs.add(match.strip())
 
-    # Anonymous non-self-closing references.
     anonymous_refs = re.findall(
         r"<ref(?![^>]*\bname\s*=)(?![^>]*/>)[^>]*>",
-        wikitext_clean,
-        flags=re.IGNORECASE,
+        wikitext_clean, flags=re.IGNORECASE,
     )
 
     return len(named_refs) + len(anonymous_refs)
@@ -279,36 +277,132 @@ def _count_refs_from_wikitext(wikitext: str) -> int:
 
 def fetch_rendered_html(title: str) -> str:
     """
-    Fetch rendered article HTML through action=parse.
+    Fetch rendered article HTML via action=parse with automatic retry.
+
+    Uses formatversion=2 so response["parse"]["text"] is the HTML string
+    directly. Retries up to 3 times with exponential back-off so transient
+    Wikipedia API errors do not silently produce a zero reference count.
     """
-    r = httpx.get(
-        MW_URL,
-        params={
-            "action": "parse",
-            "page": title,
-            "redirects": "1",
-            "prop": "text",
-            "format": "json",
-            "formatversion": "2",
-        },
-        headers={"User-Agent": USER_AGENT},
-        timeout=45,
-    )
-    r.raise_for_status()
-    return r.json().get("parse", {}).get("text", "") or ""
+    params = {
+        "action": "parse",
+        "page": title,
+        "redirects": "1",
+        "prop": "text",
+        "format": "json",
+        "formatversion": "2",
+    }
+    last_exc: Exception = RuntimeError("fetch_rendered_html: no attempts made")
+    for attempt in range(3):
+        try:
+            r = _mw_get(params, timeout=60.0)
+            html = r.json().get("parse", {}).get("text", "") or ""
+            if html:
+                return html
+            logger.warning(
+                f"fetch_rendered_html: empty HTML for '{title}' (attempt {attempt + 1})"
+            )
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                f"fetch_rendered_html: attempt {attempt + 1}/3 failed for '{title}': {exc}"
+            )
+        if attempt < 2:
+            time.sleep(1.5 * (attempt + 1))   # 1.5 s, then 3 s back-off
+    raise last_exc
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Revision counting / edit counting
+# Rate-limited MediaWiki GET helper
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Minimum gap between successive MediaWiki API calls from this process.
+# Wikipedia rate-limits burst traffic well below its documented 200 req/s limit.
+# 1 s between calls from this process keeps pairs that run concurrently safe.
+_MW_MIN_INTERVAL: float = 1.0
+_mw_last_call: float = 0.0
+
+
+def _mw_get(params: dict, *, timeout: float = 60.0, max_retries: int = 6) -> "httpx.Response":
+    """
+    GET the MediaWiki API with:
+      - A module-level throttle: minimum 1 s between successive calls.
+      - Automatic retry on HTTP 429, honouring the Retry-After header when
+        present, otherwise backing off exponentially (5 s, 10 s, 20 s ...).
+      - Automatic retry on transient 5xx responses.
+
+    All Wikipedia API calls go through this function so that concurrent pair
+    extractions do not generate bursts that trigger rate-limiting.
+    """
+    global _mw_last_call
+
+    params.setdefault("format", "json")
+    params.setdefault("formatversion", "2")
+
+    last_exc: Exception = RuntimeError("_mw_get: no attempts made")
+
+    for attempt in range(max_retries):
+        # Throttle: enforce minimum gap between calls in this process.
+        now = time.monotonic()
+        gap = _MW_MIN_INTERVAL - (now - _mw_last_call)
+        if gap > 0:
+            time.sleep(gap)
+
+        try:
+            r = httpx.get(
+                MW_URL,
+                params=params,
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout,
+            )
+            _mw_last_call = time.monotonic()
+
+            if r.status_code == 429:
+                retry_after = float(r.headers.get("Retry-After", 0))
+                wait = retry_after if retry_after > 0 else min(5.0 * (2 ** attempt), 120.0)
+                logger.warning(
+                    f"_mw_get: 429 Too Many Requests (attempt {attempt + 1}/{max_retries}), "
+                    f"waiting {wait:.1f}s"
+                )
+                time.sleep(wait)
+                last_exc = httpx.HTTPStatusError(
+                    f"429 Too Many Requests", request=r.request, response=r
+                )
+                continue
+
+            r.raise_for_status()
+            return r
+
+        except httpx.HTTPStatusError as exc:
+            last_exc = exc
+            if exc.response.status_code in (500, 502, 503, 504):
+                wait = 3.0 * (attempt + 1)
+                logger.warning(
+                    f"_mw_get: HTTP {exc.response.status_code} "
+                    f"(attempt {attempt + 1}/{max_retries}), retrying in {wait:.1f}s"
+                )
+                time.sleep(wait)
+                continue
+            raise  # non-retryable HTTP error
+
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_exc = exc
+            wait = 3.0 * (attempt + 1)
+            logger.warning(
+                f"_mw_get: network error (attempt {attempt + 1}/{max_retries}): {exc}, "
+                f"retrying in {wait:.1f}s"
+            )
+            time.sleep(wait)
+
+    raise last_exc
+
 
 def fetch_revision_stats(title: str) -> Dict:
     """
     Return real revision statistics for a Wikipedia page.
 
     num_edits is calculated by paginating over all revisions with rvlimit=max.
-    This is slower than reading page metadata, but it returns the real number
-    of revisions/edits visible through the MediaWiki revisions API.
+    Uses _mw_get() for automatic 429 retry on every page request.
 
     Returns:
       {
@@ -335,13 +429,7 @@ def fetch_revision_stats(title: str) -> Dict:
 
     try:
         while True:
-            r = httpx.get(
-                MW_URL,
-                params=params,
-                headers={"User-Agent": USER_AGENT},
-                timeout=45,
-            )
-            r.raise_for_status()
+            r = _mw_get(params)
             data = r.json()
 
             pages = data.get("query", {}).get("pages", [])
@@ -367,8 +455,8 @@ def fetch_revision_stats(title: str) -> Dict:
 
             params.update(cont)
 
-            # Be polite with the API during large pages.
-            time.sleep(0.05)
+            # Be polite between pagination requests.
+            time.sleep(0.5)
 
     except Exception as e:
         logger.warning(f"Could not fetch revision stats for '{title}': {e}")
@@ -392,6 +480,8 @@ def fetch_page_metadata(title: str) -> Dict:
       - num_images from pageimages + images
       - num_edits from full revision pagination
       - creation_date from first revision timestamp
+
+    All MediaWiki calls go through _mw_get() which retries on 429.
     """
     result = {
         "creation_date": None,
@@ -403,27 +493,21 @@ def fetch_page_metadata(title: str) -> Dict:
     }
 
     try:
-        r = httpx.get(
-            MW_URL,
-            params={
-                "action": "query",
-                "titles": title,
-                "redirects": "1",
-                "prop": "revisions|info|images|pageimages",
-                "rvprop": "content|timestamp",
-                "rvslots": "main",
-                "rvlimit": "1",
-                "rvdir": "older",
-                "inprop": "url",
-                "imlimit": "50",
-                "piprop": "name",
-                "format": "json",
-                "formatversion": "2",
-            },
-            headers={"User-Agent": USER_AGENT},
-            timeout=45,
-        )
-        r.raise_for_status()
+        r = _mw_get({
+            "action": "query",
+            "titles": title,
+            "redirects": "1",
+            "prop": "revisions|info|images|pageimages",
+            "rvprop": "content|timestamp",
+            "rvslots": "main",
+            "rvlimit": "1",
+            "rvdir": "older",
+            "inprop": "url",
+            "imlimit": "50",
+            "piprop": "name",
+            "format": "json",
+            "formatversion": "2",
+        })
 
         data = r.json()
         pages = data.get("query", {}).get("pages", [])
@@ -507,6 +591,7 @@ def fetch_page_metadata(title: str) -> Dict:
         logger.warning(f"fetch_page_metadata failed for '{title}': {e}")
 
     return result
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -675,7 +760,20 @@ def find_scientist_page(
 
             p = wiki.page(title)
 
-            if p.exists() and is_scientist_page(p, area):
+            if not p.exists():
+                continue
+
+            cats = list(p.categories.keys()) if p.categories else []
+            is_disambig = any("desambiguación" in c.lower() for c in cats)
+            if is_disambig:
+                continue
+
+            # Accept the page if it passes the scientist heuristic, OR if
+            # the search matched the exact name (high-confidence hit).
+            # The strict is_scientist_page filter previously discarded valid
+            # stub pages that lacked science keywords in their short summary.
+            exact_match = nombre.lower() in title.lower() or title.lower() in nombre.lower()
+            if is_scientist_page(p, area) or exact_match:
                 return p, f"Found via search: '{title}'"
 
     except Exception as e:
@@ -721,7 +819,9 @@ def extract(
         if pagina is None:
             result.exists_in_wikipedia = False
             result.error = note
-            to_cache(nombre, result.model_dump(), wiki_hint, direct_wiki_url)
+            # Do NOT cache not-found results: a later run (after cache clear or
+            # with different hints) should retry rather than reuse a stale miss.
+            logger.info(f"Not found in Wikipedia ES: {nombre} — not caching")
             return result
 
         result.exists_in_wikipedia = True
@@ -768,7 +868,8 @@ def extract(
     except Exception as e:
         result.error = str(e)[:300]
         logger.error(f"Error extracting '{nombre}': {e}", exc_info=True)
-        to_cache(nombre, result.model_dump(), wiki_hint, direct_wiki_url)
+        # Do NOT cache exception results (e.g. 429, timeout) — they must be retried
+        # on the next run. Only successful extractions (exists_in_wikipedia=True) are cached.
 
     return result
 

@@ -53,8 +53,9 @@
       "man": "Alfonso Valencia",
       "area": "Robótica / Bioinformática",
       "country": "ES",
-      "woman_wiki_hint": "Concepción Alicia Monje Micharet",
-      "man_wiki_hint": "Alfonso Valencia"
+      "woman_wiki_hint": "Concha Monje",
+      "man_wiki_hint": "Alfonso Valencia (bioinformático)",
+      "man_note": "Alfonso Valencia only has English Wikipedia. Pair will be skipped for ES Wikipedia analysis."
     },
     {
       "pair_id": 7,

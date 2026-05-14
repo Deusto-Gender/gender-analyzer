@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/static/styles.css">
 <!-- Chart.js from CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- Inject API URL as a config variable so JS file can read it -->
 <script>window.WBA_CONFIG = { apiUrl: '{{ api_gateway_url }}' };</script>
 </head>
@@ -186,7 +187,7 @@
   <div class="grid2" style="margin-bottom:16px">
     <div class="card">
       <div class="card-title">Nº Referencias por par
-        <span class="info-btn">i<span class="tip">Conteo de etiquetas <code>&lt;ref&gt;</code> en el wikitext vía MediaWiki parse API. Refleja las referencias reales al final de la página Wikipedia.</span></span>
+        <span class="info-btn">i<span class="tip">Conteo de referencias únicas en el HTML renderizado de Wikipedia ES. Se detectan mediante los atributos <code>id="cite_note-N"</code> y <code>about="…#cite_note-N"</code> que MediaWiki añade a cada entrada de la sección de referencias. El método refleja exactamente las referencias visibles al final de la página, tras expandir plantillas y referencias reutilizadas (las etiquetas <code>&lt;ref name="X"/&gt;</code> no se cuentan como referencia adicional).</span></span>
       </div>
       <div class="chart-wrap-lg"><canvas id="ch-refs-pairs"></canvas></div>
     </div>
@@ -248,6 +249,14 @@
   <div class="agg-title">🤖 Auditoría LLM-as-a-Judge</div>
   <div class="alert alert-warn">Requiere ANTHROPIC_API_KEY. Las biografías IA se generan <strong>sin instrucciones de neutralidad</strong> para estudiar el sesgo por defecto del modelo.</div>
   <div id="audit-list"><div class="loading" style="color:var(--muted)">Sin resultados LLM todavía.</div></div>
+  <div id="export-xlsx-wrap" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="exportResultsXLSX()" style="background:var(--success);border-color:var(--success)">
+        📥 Descargar resultados completos (.xlsx)
+      </button>
+      <span style="font-size:.8rem;color:var(--muted)">Incluye métricas Wikipedia, NLP y LLM por par, más hojas de resumen agregado y detalle LLM.</span>
+    </div>
+  </div>
 </div>
 </div>
 

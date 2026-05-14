@@ -241,7 +241,11 @@ async def run_pipeline(run_llm: bool = False):
         }, t0, 0))
         await clear_wiki_cache(client)
 
-        wiki_sem = asyncio.Semaphore(4)
+        # Semaphore(2): at most 2 pairs extracting Wikipedia data simultaneously.
+        # Each pair fires 2 Wikipedia calls (woman + man), so this means at most
+        # 4 concurrent requests to the Wikipedia API — well within rate limits.
+        # Previously Semaphore(4) caused burst 429s when all pairs launched at once.
+        wiki_sem = asyncio.Semaphore(2)
 
         async def update_status():
             while counter["done"] < len(pairs):
@@ -262,9 +266,16 @@ async def run_pipeline(run_llm: bool = False):
 
         status_task = asyncio.create_task(update_status())
 
+        # Stagger pair launches by 2 s each to spread the initial Wikipedia
+        # API burst that caused 429s when all pairs started simultaneously.
+        async def launch_pair(pair: Dict, delay: float):
+            if delay > 0:
+                await asyncio.sleep(delay)
+            await process_pair(client, pair, run_llm, wiki_sem, results, counter)
+
         await asyncio.gather(*[
-            process_pair(client, pair, run_llm, wiki_sem, results, counter)
-            for pair in pairs
+            launch_pair(pair, i * 2.0)
+            for i, pair in enumerate(pairs)
         ])
 
         status_task.cancel()

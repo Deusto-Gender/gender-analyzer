@@ -373,7 +373,10 @@ function renderNLP() {
 function renderAudit() {
   const withAudit = results.filter(r => r.llm_audit && !r.llm_audit.error && r.both_in_wikipedia);
   const el = document.getElementById('audit-list');
+  const exportWrap = document.getElementById('export-xlsx-wrap');
+
   if (!withAudit.length) {
+    if (exportWrap) exportWrap.style.display = 'none';
     // Show error details if LLM ran but failed
     const withError = results.filter(r => r.llm_audit && r.llm_audit.error);
     if (withError.length) {
@@ -392,6 +395,10 @@ function renderAudit() {
     }
     return;
   }
+
+  // Show export button when we have LLM results
+  if (exportWrap) exportWrap.style.display = 'block';
+
   el.innerHTML = withAudit.map(r => {
     const a  = r.llm_audit;
     // Support both v6.0 (bias_score_woman) and v6.1 (bias_score_wiki_woman) field names
@@ -428,6 +435,233 @@ function renderAudit() {
            <div class="diag-box">${a.diagnostic_paragraph}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// ── Excel export ───────────────────────────────────────────────────────────────
+function exportResultsXLSX() {
+  if (typeof XLSX === 'undefined') {
+    alert('SheetJS no está disponible. Recarga la página e inténtalo de nuevo.');
+    return;
+  }
+
+  const valid = results.filter(r => r.both_in_wikipedia && !r.skipped);
+  if (!valid.length) { alert('No hay resultados para exportar.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Detalle por par (todas las métricas) ──────────────────────────
+  const detailHeaders = [
+    'Par ID', 'Mujer', 'Hombre', 'Área', 'País',
+    // Wikipedia ♀
+    'W_Palabras', 'W_Referencias', 'W_CategorÍas', 'W_ImÁgenes',
+    'W_Links_Int', 'W_EdicionEs', 'W_Longitud', 'W_FechaCreacion', 'W_URL',
+    // Wikipedia ♂
+    'H_Palabras', 'H_Referencias', 'H_CategorÍas', 'H_ImÁgenes',
+    'H_Links_Int', 'H_EdicionEs', 'H_Longitud', 'H_FechaCreacion', 'H_URL',
+    // Delta Wikipedia
+    'Δ_Palabras', 'Δ_Referencias', 'Δ_CategorÍas', 'Δ_ImÁgenes', 'Δ_Links_Int',
+    // NLP ♀
+    'W_Domesticidad', 'W_D_Epistémica', 'W_Agencia', 'W_Links_Cient',
+    // NLP ♂
+    'H_Domesticidad', 'H_D_Epistémica', 'H_Agencia', 'H_Links_Cient',
+    // Delta NLP
+    'Δ_Domesticidad', 'Δ_D_Epistémica', 'Δ_Agencia', 'Δ_Links_Cient',
+    // LLM
+    'LLM_Sesgo_W', 'LLM_Sesgo_H', 'Δ_Sesgo_LLM',
+    'LLM_RolesCuidado_W', 'LLM_Impostor_W', 'LLM_Atrib_Indiv_W',
+    'LLM_Balance_Narrativo', 'LLM_Sesgo_Detectado',
+    'LLM_Diagnostico'
+  ];
+
+  const detailRows = valid.map(r => {
+    const ww = r.wiki_woman || {}, wm = r.wiki_man || {};
+    const nw = r.nlp_woman  || {}, nm = r.nlp_man  || {};
+    const a  = r.llm_audit  || {};
+    const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
+    const ma = a.merit_attribution_wiki  || a.merit_attribution      || {};
+    const bw = a.bias_score_wiki_woman   ?? a.bias_score_woman       ?? null;
+    const bm = a.bias_score_wiki_man     ?? a.bias_score_man         ?? null;
+    const nb = a.narrative_balance_wiki  ?? a.narrative_balance_score ?? null;
+
+    const n = v => (v == null ? '' : v);
+    const f = (v, d=4) => (v == null ? '' : parseFloat((+v).toFixed(d)));
+    const b = v => (v == null ? '' : v ? 'Sí' : 'No');
+
+    return [
+      r.pair_id, r.woman_name, r.man_name, r.area, r.country || '',
+      // Wikipedia ♀
+      n(ww.word_count), n(ww.num_references), n(ww.num_categories), n(ww.num_images),
+      n(ww.num_internal_links), n(ww.num_edits), n(ww.page_length),
+      n(ww.creation_date), n(ww.wikipedia_url),
+      // Wikipedia ♂
+      n(wm.word_count), n(wm.num_references), n(wm.num_categories), n(wm.num_images),
+      n(wm.num_internal_links), n(wm.num_edits), n(wm.page_length),
+      n(wm.creation_date), n(wm.wikipedia_url),
+      // Delta Wikipedia
+      n(ww.word_count) - n(wm.word_count),
+      n(ww.num_references) - n(wm.num_references),
+      n(ww.num_categories) - n(wm.num_categories),
+      n(ww.num_images)     - n(wm.num_images),
+      n(ww.num_internal_links) - n(wm.num_internal_links),
+      // NLP ♀
+      f(nw.domesticity_index), f(nw.epistemic_density), f(nw.agency_ratio), f(nw.scientific_links_ratio),
+      // NLP ♂
+      f(nm.domesticity_index), f(nm.epistemic_density), f(nm.agency_ratio), f(nm.scientific_links_ratio),
+      // Delta NLP
+      f((nw.domesticity_index||0) - (nm.domesticity_index||0)),
+      f((nw.epistemic_density||0) - (nm.epistemic_density||0)),
+      f((nw.agency_ratio||0) - (nm.agency_ratio||0)),
+      f((nw.scientific_links_ratio||0) - (nm.scientific_links_ratio||0)),
+      // LLM
+      bw, bm, (bw != null && bm != null) ? f(bw - bm) : '',
+      b(sw.roles_cuidado_presentes), b(sw.sindrome_impostor_presente),
+      f((ma.ratio_individual_A||0) * 100, 1),
+      nb != null ? f(nb) : '',
+      b(ma.sesgo_detectado),
+      n(a.diagnostic_paragraph || '').replace(/\n/g, ' ').substring(0, 500),
+    ];
+  });
+
+  const detailWS = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailRows]);
+  // Column widths
+  detailWS['!cols'] = detailHeaders.map((h, i) => ({
+    wch: i === detailHeaders.length - 1 ? 60 : i < 5 ? 22 : 14
+  }));
+  XLSX.utils.book_append_sheet(wb, detailWS, 'Detalle por par');
+
+  // ── Sheet 2: Resumen agregado ──────────────────────────────────────────────
+  const w  = summary.wikipedia || {};
+  const sn = summary.nlp       || {};
+  const sl = summary.llm       || {};
+  const aggHeaders = ['Métrica', 'Mujeres (avg)', 'Hombres (avg)', 'Delta (♀−♂)', 'Interpretación'];
+  const aggRows = [
+    ['Palabras Wikipedia',    w.avg_word_count_women,         w.avg_word_count_men,          null, ''],
+    ['Referencias Wikipedia', w.avg_references_women,         w.avg_references_men,          null, ''],
+    ['Categorías Wikipedia',  w.avg_categories_women,         w.avg_categories_men,          null, ''],
+    ['Links internos',        w.avg_links_women,              w.avg_links_men,               null, ''],
+    ['Índice domesticidad',   sn.avg_domesticity_women,       sn.avg_domesticity_men,        null, 'Mayor = más términos domésticos'],
+    ['Densidad epistémica',   sn.avg_epistemic_density_women, sn.avg_epistemic_density_men,  null, 'Mayor = más adjetivos epistémicos'],
+    ['Ratio agencia',         sn.avg_agency_ratio_women,      sn.avg_agency_ratio_men,       null, 'Mayor = más voz activa'],
+    ['Links científicos',     sn.avg_sci_links_women,         sn.avg_sci_links_men,          null, ''],
+    ['Sesgo LLM (0–10)',      sl.avg_bias_score_women,        sl.avg_bias_score_men,         null, '0=sin sesgo, 10=sesgo extremo'],
+  ].map(([m, wv, mv, , interp]) => {
+    const wf = wv != null ? +parseFloat(wv).toFixed(4) : '';
+    const mf = mv != null ? +parseFloat(mv).toFixed(4) : '';
+    const d  = (wf !== '' && mf !== '') ? +(wf - mf).toFixed(4) : '';
+    return [m, wf, mf, d, interp];
+  });
+  const aggWS = XLSX.utils.aoa_to_sheet([aggHeaders, ...aggRows]);
+  aggWS['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 35 }];
+  XLSX.utils.book_append_sheet(wb, aggWS, 'Resumen agregado');
+
+  // ── Sheet 3: Métricas Wikipedia por par ────────────────────────────────────
+  const wikiHeaders = [
+    'Par', 'Mujer', 'Hombre',
+    'Palabras ♀', 'Palabras ♂', 'Δ Palabras',
+    'Refs ♀', 'Refs ♂', 'Δ Refs',
+    'Categ ♀', 'Categ ♂', 'Δ Categ',
+    'Imgs ♀', 'Imgs ♂',
+    'Links ♀', 'Links ♂',
+    'Ediciones ♀', 'Ediciones ♂',
+    'Longitud ♀', 'Longitud ♂',
+  ];
+  const wikiRows = valid.map(r => {
+    const ww = r.wiki_woman || {}, wm = r.wiki_man || {};
+    return [
+      r.pair_id, r.woman_name, r.man_name,
+      ww.word_count||0, wm.word_count||0, (ww.word_count||0)-(wm.word_count||0),
+      ww.num_references||0, wm.num_references||0, (ww.num_references||0)-(wm.num_references||0),
+      ww.num_categories||0, wm.num_categories||0, (ww.num_categories||0)-(wm.num_categories||0),
+      ww.num_images||0, wm.num_images||0,
+      ww.num_internal_links||0, wm.num_internal_links||0,
+      ww.num_edits||0, wm.num_edits||0,
+      ww.page_length||0, wm.page_length||0,
+    ];
+  });
+  const wikiWS = XLSX.utils.aoa_to_sheet([wikiHeaders, ...wikiRows]);
+  wikiWS['!cols'] = wikiHeaders.map(() => ({ wch: 13 }));
+  wikiWS['!cols'][1] = { wch: 24 }; wikiWS['!cols'][2] = { wch: 24 };
+  XLSX.utils.book_append_sheet(wb, wikiWS, 'Wikipedia por par');
+
+  // ── Sheet 4: Métricas NLP por par ─────────────────────────────────────────
+  const nlpHeaders = [
+    'Par', 'Mujer', 'Hombre',
+    'Domestic ♀', 'Domestic ♂', 'Δ Domestic',
+    'Epist ♀', 'Epist ♂', 'Δ Epist',
+    'Agencia ♀', 'Agencia ♂', 'Δ Agencia',
+    'Sci-Links ♀', 'Sci-Links ♂', 'Δ Sci-Links',
+    'Palabras dom ♀', 'Palabras dom ♂',
+  ];
+  const nlpRows = valid.map(r => {
+    const nw = r.nlp_woman || {}, nm = r.nlp_man || {};
+    const f4 = v => v != null ? +parseFloat(v).toFixed(4) : 0;
+    return [
+      r.pair_id, r.woman_name, r.man_name,
+      f4(nw.domesticity_index), f4(nm.domesticity_index), f4((nw.domesticity_index||0)-(nm.domesticity_index||0)),
+      f4(nw.epistemic_density), f4(nm.epistemic_density), f4((nw.epistemic_density||0)-(nm.epistemic_density||0)),
+      f4(nw.agency_ratio),      f4(nm.agency_ratio),      f4((nw.agency_ratio||0)-(nm.agency_ratio||0)),
+      f4(nw.scientific_links_ratio), f4(nm.scientific_links_ratio), f4((nw.scientific_links_ratio||0)-(nm.scientific_links_ratio||0)),
+      (nw.domestic_keywords_found||[]).join(', '),
+      (nm.domestic_keywords_found||[]).join(', '),
+    ];
+  });
+  const nlpWS = XLSX.utils.aoa_to_sheet([nlpHeaders, ...nlpRows]);
+  nlpWS['!cols'] = nlpHeaders.map(() => ({ wch: 13 }));
+  nlpWS['!cols'][1] = { wch: 24 }; nlpWS['!cols'][2] = { wch: 24 };
+  nlpWS['!cols'][15] = { wch: 30 }; nlpWS['!cols'][16] = { wch: 30 };
+  XLSX.utils.book_append_sheet(wb, nlpWS, 'NLP por par');
+
+  // ── Sheet 5: Auditoría LLM por par ────────────────────────────────────────
+  const withLLM = valid.filter(r => r.llm_audit && !r.llm_audit.error);
+  if (withLLM.length) {
+    const llmHeaders = [
+      'Par', 'Mujer', 'Hombre', 'Área',
+      'Sesgo ♀ (0-10)', 'Sesgo ♂ (0-10)', 'Δ Sesgo',
+      'Roles cuidado ♀', 'Impostor ♀', 'Roles cuidado ♂', 'Impostor ♂',
+      'Atrib. indiv. ♀ (%)', 'Atrib. indiv. ♂ (%)',
+      'Sesgo mérito detectado',
+      'Texto más personal (blind test)',
+      'Prop. personal ♀ (%)', 'Prop. personal ♂ (%)',
+      'Balance narrativo',
+      'Recomendaciones ♀',
+      'Diagnóstico integrado',
+    ];
+    const llmRows = withLLM.map(r => {
+      const a  = r.llm_audit;
+      const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
+      const sm = a.stereotype_audit_wiki_m || a.stereotype_audit_man   || {};
+      const ma = a.merit_attribution_wiki  || a.merit_attribution      || {};
+      const fa = a.focus_analysis_wiki     || a.focus_analysis         || {};
+      const bw = a.bias_score_wiki_woman   ?? a.bias_score_woman       ?? '';
+      const bm = a.bias_score_wiki_man     ?? a.bias_score_man         ?? '';
+      const nb = a.narrative_balance_wiki  ?? a.narrative_balance_score ?? '';
+      const b  = v => v == null ? '' : (v ? 'Sí' : 'No');
+      const pct = v => v != null ? +(parseFloat(v)*100).toFixed(1) : '';
+      return [
+        r.pair_id, r.woman_name, r.man_name, r.area,
+        bw, bm, (bw !== '' && bm !== '') ? +(bw - bm).toFixed(2) : '',
+        b(sw.roles_cuidado_presentes), b(sw.sindrome_impostor_presente),
+        b(sm.roles_cuidado_presentes), b(sm.sindrome_impostor_presente),
+        pct(ma.ratio_individual_A), pct(ma.ratio_individual_B),
+        b(ma.sesgo_detectado),
+        fa.texto_mas_personal || '',
+        pct(fa.proporcion_personal_A), pct(fa.proporcion_personal_B),
+        nb !== '' ? +parseFloat(nb).toFixed(4) : '',
+        (sw.recomendaciones || []).join(' | ').substring(0, 300),
+        (a.diagnostic_paragraph || '').replace(/\n/g, ' ').substring(0, 600),
+      ];
+    });
+    const llmWS = XLSX.utils.aoa_to_sheet([llmHeaders, ...llmRows]);
+    llmWS['!cols'] = llmHeaders.map((h, i) =>
+      ({ wch: [4,22,22,20,10,10,8,14,10,14,10,14,14,16,20,14,14,14,40,60][i] || 14 })
+    );
+    XLSX.utils.book_append_sheet(wb, llmWS, 'LLM Auditoría');
+  }
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  const now = new Date();
+  const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `gender_bias_analyzer_${ts}.xlsx`);
 }
 
 // ── Pairs ──────────────────────────────────────────────────────────────────────
