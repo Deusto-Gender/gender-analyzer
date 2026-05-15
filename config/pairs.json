@@ -50,12 +50,11 @@
     {
       "pair_id": 6,
       "woman": "Concha Monje",
-      "man": "Alfonso Valencia",
-      "area": "Robótica / Bioinformática",
+      "man": "Aníbal Ollero",
+      "area": "Robótica / sistemas autónomos / control / robótica aérea",
       "country": "ES",
       "woman_wiki_hint": "Concha Monje",
-      "man_wiki_hint": "Alfonso Valencia (bioinformático)",
-      "man_note": "Alfonso Valencia only has English Wikipedia. Pair will be skipped for ES Wikipedia analysis."
+      "man_wiki_hint": "Aníbal Ollero"
     },
     {
       "pair_id": 7,
@@ -69,29 +68,29 @@
     {
       "pair_id": 8,
       "woman": "Elena García Armada",
-      "man": "José Luis López Gómez",
-      "area": "Exoesqueletos / Ingeniería robótica",
+      "man": "Carlos Balaguer",
+      "area": "Robótica / robótica asistencial / exoesqueletos / interacción humano-robot",
       "country": "ES",
       "woman_wiki_hint": "Elena García Armada",
-      "man_wiki_hint": "José Luis López Gómez"
+      "man_wiki_hint": "Carlos Balaguer"
     },
     {
       "pair_id": 9,
       "woman": "María José Escalona",
-      "man": "Juan Ignacio Cirac Sasturain",
-      "area": "Ingeniería del software / Física cuántica",
+      "man": "Mario Piattini",
+      "area": "Ingeniería del software / ingeniería de sistemas y software / calidad de sistemas de información",
       "country": "ES",
       "woman_wiki_hint": "María José Escalona",
-      "man_wiki_hint": "Juan Ignacio Cirac Sasturain"
+      "man_wiki_hint": "Mario Piattini"
     },
     {
       "pair_id": 10,
       "woman": "Patricia Horcajada",
-      "man": "Eduardo Sáenz de Cabezón",
-      "area": "Ciencia de materiales / Matemáticas",
+      "man": "Eugenio Coronado",
+      "area": "Ciencia de materiales / química de materiales / materiales funcionales",
       "country": "ES",
       "woman_wiki_hint": "Patricia Horcajada",
-      "man_wiki_hint": "Eduardo Sáenz de Cabezón"
+      "man_wiki_hint": "Eugenio Coronado"
     },
     {
       "pair_id": 11,
@@ -105,11 +104,11 @@
     {
       "pair_id": 12,
       "woman": "Sara García Alonso",
-      "man": "Mariano Barbacid",
-      "area": "Biología molecular / Oncología",
+      "man": "Pablo Álvarez Fernández",
+      "area": "Cohorte ESA / ciencia y tecnología espacial / ingeniería aeroespacial",
       "country": "ES",
       "woman_wiki_hint": "Sara García Alonso",
-      "man_wiki_hint": "Mariano Barbacid"
+      "man_wiki_hint": "Pablo Álvarez Fernández"
     }
   ]
 }

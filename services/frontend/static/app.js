@@ -467,7 +467,527 @@ function exportResultsXLSX() {
   const valid = results.filter(r => r.both_in_wikipedia && !r.skipped);
   if (!valid.length) { alert('No hay resultados para exportar.'); return; }
 
+  // Declared first — used by Resumen agregado AND Sheet 5
+  const withLLM = valid.filter(r => r.llm_audit && !r.llm_audit.error);
+
   const wb = XLSX.utils.book_new();
+
+  // ── Shared helpers ─────────────────────────────────────────────────────────
+  const nv  = v => (v == null || v === undefined) ? '' : v;
+  const f4  = v => (v == null || v === undefined || v === '' || isNaN(+v)) ? '' : +parseFloat(v).toFixed(4);
+  const f2  = v => (v == null || v === undefined || v === '' || isNaN(+v)) ? '' : +parseFloat(v).toFixed(2);
+  const f1  = v => (v == null || v === undefined || v === '' || isNaN(+v)) ? '' : +parseFloat(v).toFixed(1);
+  const bool= v => (v == null || v === undefined) ? '' : (v ? 'Sí' : 'No');
+  const pct = v => (v == null || v === undefined || v === '') ? '' : f1(+v * 100);
+  const di  = (a, b) => {
+    const na = +a, nb2 = +b;
+    return (a !== '' && b !== '' && !isNaN(na) && !isNaN(nb2)) ? f4(na - nb2) : '';
+  };
+  const di2 = (a, b) => {
+    const na = +a, nb2 = +b;
+    return (a !== '' && b !== '' && !isNaN(na) && !isNaN(nb2)) ? f2(na - nb2) : '';
+  };
+  const avgArr = arr => {
+    const a = arr.filter(v => v !== '' && v != null && !isNaN(+v));
+    return a.length ? +( a.reduce((s, v) => s + +v, 0) / a.length ).toFixed(4) : '';
+  };
+  const medArr = arr => {
+    const a = arr.filter(v => v !== '' && v != null && !isNaN(+v)).map(v => +v).sort((x, y) => x - y);
+    if (!a.length) return '';
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? +a[m].toFixed(4) : +((a[m-1] + a[m]) / 2).toFixed(4);
+  };
+
+  // ── SHEET 1: Detalle por par ───────────────────────────────────────────────
+  // Full ♀/♂/Δ for all metric groups including complete LLM ♂ columns
+  const DH = [
+    'Par', 'Mujer', 'Hombre', 'Area', 'Pais',
+    // Gr A Wikipedia ♀
+    'A·Palabras_W', 'A·Referencias_W', 'A·Categorias_W', 'A·Imagenes_W',
+    'A·Links_W', 'A·Ediciones_W', 'A·Longitud_W', 'A·FechaCreacion_W', 'A·URL_W',
+    // Gr A Wikipedia ♂
+    'A·Palabras_H', 'A·Referencias_H', 'A·Categorias_H', 'A·Imagenes_H',
+    'A·Links_H', 'A·Ediciones_H', 'A·Longitud_H', 'A·FechaCreacion_H', 'A·URL_H',
+    // Gr A Delta
+    'A·D_Palabras', 'A·D_Referencias', 'A·D_Categorias', 'A·D_Imagenes', 'A·D_Links',
+    // Gr B NLP ♀
+    'B·Domesticidad_W', 'B·Densidad_Epist_W', 'B·Agencia_W', 'B·Centralidad_Cient_W',
+    // Gr B NLP ♂
+    'B·Domesticidad_H', 'B·Densidad_Epist_H', 'B·Agencia_H', 'B·Centralidad_Cient_H',
+    // Gr B Delta
+    'B·D_Domesticidad', 'B·D_Densidad_Epist', 'B·D_Agencia', 'B·D_Centralidad_Cient',
+    // Gr C LLM ♀
+    'C·Sesgo_Wiki_W', 'C·Sesgo_IA_W',
+    'C·RolesCuidado_W', 'C·Impostor_W', 'C·Logros_Indiv_W_pct',
+    // Gr C LLM ♂
+    'C·Sesgo_Wiki_H', 'C·Sesgo_IA_H',
+    'C·RolesCuidado_H', 'C·Impostor_H', 'C·Logros_Indiv_H_pct',
+    // Gr C comparacion
+    'C·D_Sesgo_Wiki', 'C·D_Sesgo_IA',
+    'C·Sesgo_Wiki_W_mayor_H', 'C·Sesgo_IA_W_mayor_H', 'C·Logros_W_menor_H',
+    // Gr C nivel par
+    'C·Balance_Narr_Wiki', 'C·Balance_Narr_IA',
+    'C·Sesgo_Merito_Detectado', 'C·Texto_Mas_Personal_Blind',
+    'C·Diagnostico',
+  ];
+
+  const DR = valid.map(r => {
+    const ww = r.wiki_woman || {}, wm = r.wiki_man || {};
+    const nw = r.nlp_woman  || {}, nm = r.nlp_man  || {};
+    const a  = r.llm_audit  || {};
+    const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
+    const sm = a.stereotype_audit_wiki_m || a.stereotype_audit_man   || {};
+    const ma = a.merit_attribution_wiki  || a.merit_attribution      || {};
+    const fa = a.focus_analysis_wiki     || a.focus_analysis         || {};
+    const bwW = f2(a.bias_score_wiki_woman ?? a.bias_score_woman);
+    const bwH = f2(a.bias_score_wiki_man   ?? a.bias_score_man);
+    const baW = f2(a.bias_score_ai_woman);
+    const baH = f2(a.bias_score_ai_man);
+    const iW  = pct(ma.ratio_individual_A);
+    const iH  = pct(ma.ratio_individual_B);
+    const yn  = (cond, a2, b2) => (a2 !== '' && b2 !== '') ? (cond ? 'Si' : 'No') : '';
+    return [
+      r.pair_id, r.woman_name, r.man_name, r.area, nv(r.country),
+      // A ♀
+      nv(ww.word_count), nv(ww.num_references), nv(ww.num_categories), nv(ww.num_images),
+      nv(ww.num_internal_links), nv(ww.num_edits), nv(ww.page_length), nv(ww.creation_date), nv(ww.wikipedia_url),
+      // A ♂
+      nv(wm.word_count), nv(wm.num_references), nv(wm.num_categories), nv(wm.num_images),
+      nv(wm.num_internal_links), nv(wm.num_edits), nv(wm.page_length), nv(wm.creation_date), nv(wm.wikipedia_url),
+      // A delta
+      di(nv(ww.word_count), nv(wm.word_count)),
+      di(nv(ww.num_references), nv(wm.num_references)),
+      di(nv(ww.num_categories), nv(wm.num_categories)),
+      di(nv(ww.num_images), nv(wm.num_images)),
+      di(nv(ww.num_internal_links), nv(wm.num_internal_links)),
+      // B ♀
+      f4(nw.domesticity_index), f4(nw.epistemic_density), f4(nw.agency_ratio), f4(nw.scientific_links_ratio),
+      // B ♂
+      f4(nm.domesticity_index), f4(nm.epistemic_density), f4(nm.agency_ratio), f4(nm.scientific_links_ratio),
+      // B delta
+      di(f4(nw.domesticity_index), f4(nm.domesticity_index)),
+      di(f4(nw.epistemic_density), f4(nm.epistemic_density)),
+      di(f4(nw.agency_ratio),      f4(nm.agency_ratio)),
+      di(f4(nw.scientific_links_ratio), f4(nm.scientific_links_ratio)),
+      // C ♀
+      bwW, baW, bool(sw.roles_cuidado_presentes), bool(sw.sindrome_impostor_presente), iW,
+      // C ♂
+      bwH, baH, bool(sm.roles_cuidado_presentes), bool(sm.sindrome_impostor_presente), iH,
+      // C comparacion
+      di2(bwW, bwH), di2(baW, baH),
+      yn(+bwW > +bwH, bwW, bwH),
+      yn(+baW > +baH, baW, baH),
+      yn(+iW  < +iH,  iW,  iH),
+      // C par-level
+      f4(a.narrative_balance_wiki ?? a.narrative_balance_score),
+      f4(a.narrative_balance_ai),
+      bool(ma.sesgo_detectado),
+      nv(fa.texto_mas_personal),
+      nv(a.diagnostic_paragraph || '').replace(/\n/g, ' ').substring(0, 500),
+    ];
+  });
+
+  const detailWS = XLSX.utils.aoa_to_sheet([DH, ...DR]);
+  detailWS['!cols'] = DH.map((h, i) => ({
+    wch: i < 5 ? 20 : h.includes('URL') ? 40 : h.includes('Diagnostico') ? 60 : 15
+  }));
+  XLSX.utils.book_append_sheet(wb, detailWS, 'Detalle por par');
+
+  // ── SHEET 2: Wikipedia por par  (adds creation_date ♀/♂/Δ) ───────────────
+  const WH = [
+    'Par', 'Mujer', 'Hombre',
+    'Palabras_W', 'Palabras_H', 'D_Palabras',
+    'Referencias_W', 'Referencias_H', 'D_Referencias',
+    'Categorias_W', 'Categorias_H', 'D_Categorias',
+    'Imagenes_W', 'Imagenes_H', 'D_Imagenes',
+    'Links_W', 'Links_H', 'D_Links',
+    'Ediciones_W', 'Ediciones_H',
+    'Longitud_W', 'Longitud_H',
+    'FechaCreacion_W', 'FechaCreacion_H', 'D_Fecha_anios',
+  ];
+  const WR = valid.map(r => {
+    const ww = r.wiki_woman || {}, wm = r.wiki_man || {};
+    const yw = parseInt((ww.creation_date || '').substring(0, 4));
+    const ym = parseInt((wm.creation_date || '').substring(0, 4));
+    const dy = (!isNaN(yw) && !isNaN(ym)) ? yw - ym : '';
+    const sub = (a, b) => ((a || 0) - (b || 0));
+    return [
+      r.pair_id, r.woman_name, r.man_name,
+      ww.word_count || 0,         wm.word_count || 0,         sub(ww.word_count, wm.word_count),
+      ww.num_references || 0,     wm.num_references || 0,     sub(ww.num_references, wm.num_references),
+      ww.num_categories || 0,     wm.num_categories || 0,     sub(ww.num_categories, wm.num_categories),
+      ww.num_images || 0,         wm.num_images || 0,         sub(ww.num_images, wm.num_images),
+      ww.num_internal_links || 0, wm.num_internal_links || 0, sub(ww.num_internal_links, wm.num_internal_links),
+      ww.num_edits || 0,          wm.num_edits || 0,
+      ww.page_length || 0,        wm.page_length || 0,
+      nv(ww.creation_date), nv(wm.creation_date), dy,
+    ];
+  });
+  const wikiWS = XLSX.utils.aoa_to_sheet([WH, ...WR]);
+  wikiWS['!cols'] = WH.map((h, i) => ({
+    wch: i === 0 ? 5 : i < 3 ? 24 : h.includes('Fecha') ? 14 : 12
+  }));
+  XLSX.utils.book_append_sheet(wb, wikiWS, 'Wikipedia por par');
+
+  // ── SHEET 3: NLP por par  (unchanged) ─────────────────────────────────────
+  const NH = [
+    'Par', 'Mujer', 'Hombre',
+    'Domestic_W', 'Domestic_H', 'D_Domestic',
+    'Epist_W',    'Epist_H',    'D_Epist',
+    'Agencia_W',  'Agencia_H',  'D_Agencia',
+    'SciLinks_W', 'SciLinks_H', 'D_SciLinks',
+    'Palabras_dom_W', 'Palabras_dom_H',
+  ];
+  const NR = valid.map(r => {
+    const nw = r.nlp_woman || {}, nm = r.nlp_man || {};
+    const g = v => v != null ? +parseFloat(v).toFixed(4) : 0;
+    return [
+      r.pair_id, r.woman_name, r.man_name,
+      g(nw.domesticity_index),    g(nm.domesticity_index),    g((nw.domesticity_index    || 0) - (nm.domesticity_index    || 0)),
+      g(nw.epistemic_density),    g(nm.epistemic_density),    g((nw.epistemic_density    || 0) - (nm.epistemic_density    || 0)),
+      g(nw.agency_ratio),         g(nm.agency_ratio),         g((nw.agency_ratio         || 0) - (nm.agency_ratio         || 0)),
+      g(nw.scientific_links_ratio),g(nm.scientific_links_ratio),g((nw.scientific_links_ratio||0)-(nm.scientific_links_ratio||0)),
+      (nw.domestic_keywords_found || []).join(', '),
+      (nm.domestic_keywords_found || []).join(', '),
+    ];
+  });
+  const nlpWS = XLSX.utils.aoa_to_sheet([NH, ...NR]);
+  nlpWS['!cols'] = NH.map((h, i) => ({ wch: i === 0 ? 5 : i < 3 ? 24 : h.includes('dom') ? 30 : 13 }));
+  XLSX.utils.book_append_sheet(wb, nlpWS, 'NLP por par');
+
+  // ── SHEET 4: LLM Auditoria  (all 9 Gr-C metrics with ♀/♂/comparison) ──────
+  if (withLLM.length) {
+    const LH = [
+      'Par', 'Mujer', 'Hombre', 'Area',
+      // bias_score_wiki
+      'SesgoWiki_W [0-10]', 'SesgoWiki_H [0-10]', 'D_SesgoWiki', 'SesgoWiki_W_mayor_H',
+      // bias_score_ai
+      'SesgoIA_W [0-10]',   'SesgoIA_H [0-10]',   'D_SesgoIA',   'SesgoIA_W_mayor_H',
+      // narrative_balance
+      'BalNarr_Wiki [0-1]', 'BalNarr_IA [0-1]', 'IA_amplifica_foco',
+      // ratio_individual
+      'Logros_Indiv_W_pct', 'Logros_Indiv_H_pct', 'D_Logros_Indiv', 'Logros_W_menor_H',
+      // roles_cuidado
+      'RolesCuidado_W', 'RolesCuidado_H', 'RolesCuidado_asimetrico',
+      // sindrome_impostor
+      'Impostor_W', 'Impostor_H', 'Impostor_asimetrico',
+      // extras
+      'Sesgo_Merito_Detectado',
+      'Texto_Mas_Personal_Blind',
+      'Prop_Personal_W_pct', 'Prop_Personal_H_pct', 'D_Prop_Personal',
+      'Adj_Liderazgo_W', 'Adj_Liderazgo_H',
+      'Recomendaciones_W',
+      'Diagnostico_Integrado',
+    ];
+
+    const LR = withLLM.map(r => {
+      const a  = r.llm_audit;
+      const sw = a.stereotype_audit_wiki_w || a.stereotype_audit_woman || {};
+      const sm = a.stereotype_audit_wiki_m || a.stereotype_audit_man   || {};
+      const ma = a.merit_attribution_wiki  || a.merit_attribution      || {};
+      const fa = a.focus_analysis_wiki     || a.focus_analysis         || {};
+      const bwW = f2(a.bias_score_wiki_woman ?? a.bias_score_woman);
+      const bwH = f2(a.bias_score_wiki_man   ?? a.bias_score_man);
+      const baW = f2(a.bias_score_ai_woman);
+      const baH = f2(a.bias_score_ai_man);
+      const nbW = f4(a.narrative_balance_wiki ?? a.narrative_balance_score);
+      const nbA = f4(a.narrative_balance_ai);
+      const iW  = pct(ma.ratio_individual_A);
+      const iH  = pct(ma.ratio_individual_B);
+      const ppW = pct(fa.proporcion_personal_A);
+      const ppH = pct(fa.proporcion_personal_B);
+      const yn  = (cond, a2, b2) => (a2 !== '' && b2 !== '') ? (cond ? 'Si' : 'No') : '';
+      return [
+        r.pair_id, r.woman_name, r.man_name, r.area,
+        // bias_score_wiki
+        bwW, bwH, di2(bwW, bwH), yn(+bwW > +bwH, bwW, bwH),
+        // bias_score_ai
+        baW, baH, di2(baW, baH), yn(+baW > +baH, baW, baH),
+        // narrative_balance
+        nbW, nbA, yn(+nbA > +nbW, nbA, nbW),
+        // ratio_individual
+        iW, iH, di2(iW, iH), yn(+iW < +iH, iW, iH),
+        // roles_cuidado
+        bool(sw.roles_cuidado_presentes), bool(sm.roles_cuidado_presentes),
+        (sw.roles_cuidado_presentes && !sm.roles_cuidado_presentes) ? 'Si' : 'No',
+        // sindrome_impostor
+        bool(sw.sindrome_impostor_presente), bool(sm.sindrome_impostor_presente),
+        (sw.sindrome_impostor_presente && !sm.sindrome_impostor_presente) ? 'Si' : 'No',
+        // extras
+        bool(ma.sesgo_detectado),
+        nv(fa.texto_mas_personal),
+        ppW, ppH, di2(ppW, ppH),
+        (fa.adjetivos_liderazgo_A || []).join(', '),
+        (fa.adjetivos_liderazgo_B || []).join(', '),
+        (sw.recomendaciones || []).join(' | ').substring(0, 300),
+        nv(a.diagnostic_paragraph || '').replace(/\n/g, ' ').substring(0, 600),
+      ];
+    });
+
+    const llmWS = XLSX.utils.aoa_to_sheet([LH, ...LR]);
+    llmWS['!cols'] = LH.map((h, i) => ({
+      wch: i < 4 ? 20 : h.includes('Diagnostico') ? 60 : h.includes('Recom') || h.includes('Adj') ? 36 : 14
+    }));
+    XLSX.utils.book_append_sheet(wb, llmWS, 'LLM Auditoria');
+  }
+
+  // ── SHEET 5: Resumen agregado  (all 21 metrics + subtotals + global index) ─
+  // All values computed from JS arrays — NO cross-sheet Excel formulas
+  // (cross-sheet formulas caused "file errors" in Excel/LibreOffice)
+
+  // Collect value vectors for every metric across all valid pairs
+  const vW  = (fn) => valid.map(r => { const v = fn(r); return (v == null || v === undefined || v === '') ? null : +v; });
+  const vWL = (fn) => withLLM.map(r => { const v = fn(r); return (v == null || v === undefined || v === '') ? null : +v; });
+  const vBL = (fn) => withLLM.map(r => fn(r)); // boolean array (true/false/null)
+
+  // Gr A
+  const aWordsW  = vW(r => r.wiki_woman?.word_count);
+  const aWordsH  = vW(r => r.wiki_man?.word_count);
+  const aRefsW   = vW(r => r.wiki_woman?.num_references);
+  const aRefsH   = vW(r => r.wiki_man?.num_references);
+  const aCatsW   = vW(r => r.wiki_woman?.num_categories);
+  const aCatsH   = vW(r => r.wiki_man?.num_categories);
+  const aImgsW   = vW(r => r.wiki_woman?.num_images);
+  const aImgsH   = vW(r => r.wiki_man?.num_images);
+  const aLinksW  = vW(r => r.wiki_woman?.num_internal_links);
+  const aLinksH  = vW(r => r.wiki_man?.num_internal_links);
+  const aEditsW  = vW(r => r.wiki_woman?.num_edits);
+  const aEditsH  = vW(r => r.wiki_man?.num_edits);
+  const aLenW    = vW(r => r.wiki_woman?.page_length);
+  const aLenH    = vW(r => r.wiki_man?.page_length);
+  const aYearW   = valid.map(r => { const y = parseInt((r.wiki_woman?.creation_date || '').substring(0, 4)); return isNaN(y) ? null : y; });
+  const aYearH   = valid.map(r => { const y = parseInt((r.wiki_man?.creation_date  || '').substring(0, 4)); return isNaN(y) ? null : y; });
+
+  // Gr B
+  const bDomW  = vW(r => r.nlp_woman?.domesticity_index);
+  const bDomH  = vW(r => r.nlp_man?.domesticity_index);
+  const bEpiW  = vW(r => r.nlp_woman?.epistemic_density);
+  const bEpiH  = vW(r => r.nlp_man?.epistemic_density);
+  const bAgW   = vW(r => r.nlp_woman?.agency_ratio);
+  const bAgH   = vW(r => r.nlp_man?.agency_ratio);
+  const bSciW  = vW(r => r.nlp_woman?.scientific_links_ratio);
+  const bSciH  = vW(r => r.nlp_man?.scientific_links_ratio);
+
+  // Gr C (LLM pairs only)
+  const cBwW  = vWL(r => r.llm_audit?.bias_score_wiki_woman ?? r.llm_audit?.bias_score_woman);
+  const cBwH  = vWL(r => r.llm_audit?.bias_score_wiki_man   ?? r.llm_audit?.bias_score_man);
+  const cBaW  = vWL(r => r.llm_audit?.bias_score_ai_woman);
+  const cBaH  = vWL(r => r.llm_audit?.bias_score_ai_man);
+  const cNbW  = vWL(r => r.llm_audit?.narrative_balance_wiki ?? r.llm_audit?.narrative_balance_score);
+  const cNbA  = vWL(r => r.llm_audit?.narrative_balance_ai);
+  const cRiW  = vWL(r => r.llm_audit?.merit_attribution_wiki?.ratio_individual_A   ?? r.llm_audit?.merit_attribution?.ratio_individual_A);
+  const cRiH  = vWL(r => r.llm_audit?.merit_attribution_wiki?.ratio_individual_B   ?? r.llm_audit?.merit_attribution?.ratio_individual_B);
+  const cRcW  = vBL(r => (r.llm_audit?.stereotype_audit_wiki_w || r.llm_audit?.stereotype_audit_woman || {})?.roles_cuidado_presentes);
+  const cRcH  = vBL(r => (r.llm_audit?.stereotype_audit_wiki_m || r.llm_audit?.stereotype_audit_man   || {})?.roles_cuidado_presentes);
+  const cSiW  = vBL(r => (r.llm_audit?.stereotype_audit_wiki_w || r.llm_audit?.stereotype_audit_woman || {})?.sindrome_impostor_presente);
+  const cSiH  = vBL(r => (r.llm_audit?.stereotype_audit_wiki_m || r.llm_audit?.stereotype_audit_man   || {})?.sindrome_impostor_presente);
+
+  // Count pairs with bias signal
+  const N  = valid.length  || 1;
+  const NL = withLLM.length || 1;
+  const cntLT  = (wA, hA) => wA.filter((w, i) => w != null && hA[i] != null && w < hA[i]).length; // ♀<♂
+  const cntGT  = (wA, hA) => wA.filter((w, i) => w != null && hA[i] != null && w > hA[i]).length; // ♀>♂
+  const cntGT5 = (arr)    => arr.filter(v => v != null && v > 5).length;
+  const cntGT2 = (arr)    => arr.filter(v => v != null && v > 0.2).length;
+  const cntTru = (arr)    => arr.filter(v => v === true).length;
+  // creation_date: ♀ article created LATER (year♀ > year♂) = bias
+  const cntRecent = () => valid.filter((_, i) => aYearW[i] != null && aYearH[i] != null && aYearW[i] > aYearH[i]).length;
+
+  // Bias index = proportion of pairs showing expected bias signal
+  const idx = (count, total) => total > 0 ? +( count / total ).toFixed(4) : '';
+
+  // Build a metric row for the Resumen sheet
+  // [Gr, Code, Name, AvgW, AvgH, Delta, MedW, MedH, Npairs_bias, Index, Interpretation]
+  function mrow(gr, code, name, wArr, hArr, cntFn, total, interp) {
+    const cnt = cntFn();
+    return [
+      gr, code, name,
+      avgArr(wArr.map(v => v == null ? '' : v)),
+      avgArr(hArr.map(v => v == null ? '' : v)),
+      di(avgArr(wArr.map(v => v == null ? '' : v)), avgArr(hArr.map(v => v == null ? '' : v))),
+      medArr(wArr.map(v => v == null ? '' : v)),
+      medArr(hArr.map(v => v == null ? '' : v)),
+      `${cnt}/${total}`,
+      idx(cnt, total),
+      interp,
+    ];
+  }
+
+  // Boolean metric row (true/false arrays, no ♂ average)
+  function brow(gr, code, name, wBool, hBool, total, interp) {
+    const cntW = cntTru(wBool);
+    const cntH = cntTru(hBool);
+    const pctW = total > 0 ? +( cntW / total * 100 ).toFixed(1) : '';
+    const pctH = total > 0 ? +( cntH / total * 100 ).toFixed(1) : '';
+    return [
+      gr, code, name,
+      pctW !== '' ? `${pctW}%` : '',   // AvgW = % pares Sí ♀
+      pctH !== '' ? `${pctH}%` : '',   // AvgH = % pares Sí ♂
+      '',                               // no numeric delta for booleans
+      '', '',
+      `${cntW}/${total}`,
+      idx(cntW, total),
+      interp,
+    ];
+  }
+
+  // Separator / label rows
+  const sep  = label => [label, '', '', '', '', '', '', '', '', '', ''];
+  const subt = (gr, label, totalBias, total, interpretation) => [
+    gr, '—', label, '', '', '', '', '',
+    `${totalBias}/${total}`,
+    idx(totalBias, total),
+    interpretation,
+  ];
+
+  // Compute subtotals
+  const grA_counts = [
+    cntLT(aWordsW, aWordsH), cntLT(aRefsW,  aRefsH),  cntLT(aCatsW,  aCatsH),
+    cntLT(aImgsW,  aImgsH),  cntLT(aLinksW, aLinksH), cntLT(aEditsW, aEditsH),
+    cntLT(aLenW,   aLenH),   cntRecent(),
+  ];
+  const grA_bias = grA_counts.reduce((s, v) => s + v, 0);
+  const grA_max  = 8 * N;
+
+  const grB_counts = [
+    cntGT(bDomW, bDomH), cntLT(bEpiW, bEpiH),
+    cntLT(bAgW,  bAgH),  cntLT(bSciW, bSciH),
+  ];
+  const grB_bias = grB_counts.reduce((s, v) => s + v, 0);
+  const grB_max  = 4 * N;
+
+  const grC_counts = [
+    cntGT5(cBwW), cntGT(cBwW, cBwH), cntGT5(cBaW), cntGT(cBaW, cBaH),
+    cntGT2(cNbW), cntGT(cNbA, cNbW), cntLT(cRiW, cRiH),
+    cntTru(cRcW), cntTru(cSiW),
+  ];
+  const grC_bias = grC_counts.reduce((s, v) => s + v, 0);
+  const grC_max  = 9 * NL;
+
+  const globalIdx = (
+    (grA_max > 0 ? grA_bias / grA_max : 0) +
+    (grB_max > 0 ? grB_bias / grB_max : 0) +
+    (grC_max > 0 ? grC_bias / grC_max : 0)
+  ) / 3;
+
+  const AGH = [
+    'Gr.', 'Codigo API', 'Metrica',
+    'Media W', 'Media H', 'Delta (W-H)',
+    'Mediana W', 'Mediana H',
+    'N pares sesgo W', 'Indice sesgo W (0-1)',
+    'Interpretacion — sesgo detectado?',
+  ];
+
+  const aggData = [
+    AGH,
+    sep('=== GRUPO A — METRICAS WIKIPEDIA ==='),
+    mrow('A','word_count',         'Num. palabras',
+      aWordsW, aWordsH, ()=>cntLT(aWordsW,aWordsH), N,
+      'SESGO si W<H: articulo femenino mas corto. Indica menor cobertura editorial de la investigadora.'),
+    mrow('A','num_references',     'Num. referencias',
+      aRefsW,  aRefsH,  ()=>cntLT(aRefsW,aRefsH),  N,
+      'SESGO si W<H: articulo femenino menos documentado. Menos fuentes = menor legitimacion academica.'),
+    mrow('A','num_categories',     'Num. categorias',
+      aCatsW,  aCatsH,  ()=>cntLT(aCatsW,aCatsH),  N,
+      'SESGO si W<H: articulo femenino menos categorizado. Menor integracion en red tematica Wikipedia.'),
+    mrow('A','num_images',         'Num. imagenes',
+      aImgsW,  aImgsH,  ()=>cntLT(aImgsW,aImgsH),  N,
+      'SESGO si W<H: articulo femenino con menos imagenes. Menor cobertura visual.'),
+    mrow('A','num_internal_links', 'Num. enlaces internos',
+      aLinksW, aLinksH, ()=>cntLT(aLinksW,aLinksH), N,
+      'SESGO si W<H: articulo femenino menos conectado dentro de Wikipedia.'),
+    mrow('A','num_edits',          'Num. ediciones',
+      aEditsW, aEditsH, ()=>cntLT(aEditsW,aEditsH), N,
+      'SESGO si W<H: articulo femenino menos editado (menos atencion editorial acumulada).'),
+    mrow('A','page_length',        'Longitud pagina (bytes)',
+      aLenW,   aLenH,   ()=>cntLT(aLenW,aLenH),   N,
+      'SESGO si W<H: articulo femenino mas corto en bytes (incluye codigo wiki, plantillas, refs).'),
+    [
+      'A','creation_date','Fecha creacion (ano)',
+      avgArr(aYearW.map(v=>v==null?'':v)), avgArr(aYearH.map(v=>v==null?'':v)),
+      di(avgArr(aYearW.map(v=>v==null?'':v)), avgArr(aYearH.map(v=>v==null?'':v))),
+      medArr(aYearW.map(v=>v==null?'':v)), medArr(aYearH.map(v=>v==null?'':v)),
+      `${cntRecent()}/${N}`, idx(cntRecent(), N),
+      'SESGO si ano_W > ano_H: articulo femenino creado mas tarde. Menos tiempo para desarrollarse.',
+    ],
+    subt('A','SUBTOTAL GR. A — Indice sesgo Wikipedia', grA_bias, grA_max,
+      `${grA_bias} senales de sesgo sobre ${grA_max} posibles (8 metricas x ${N} pares). Indice=[0,1]. >0.5 = sesgo generalizado.`),
+
+    sep('=== GRUPO B — METRICAS NLP ==='),
+    mrow('B','domesticity_index',     'Indice domesticidad (x1000)',
+      bDomW, bDomH, ()=>cntGT(bDomW,bDomH), N,
+      'SESGO si W>H: texto femenino contiene mas terminos domesticos (familia, cuidados, hogar).'),
+    mrow('B','epistemic_density',     'Densidad epistemica',
+      bEpiW, bEpiH, ()=>cntLT(bEpiW,bEpiH), N,
+      'SESGO si W<H: texto femenino con menos adjetivos de capacidad intelectual vs personalidad.'),
+    mrow('B','agency_ratio',          'Ratio de agencia',
+      bAgW,  bAgH,  ()=>cntLT(bAgW,bAgH),   N,
+      'SESGO si W<H: texto femenino mas pasivo (verbos pasivos, menos agencia narrativa).'),
+    mrow('B','scientific_links_ratio','Centralidad cientifica',
+      bSciW, bSciH, ()=>cntLT(bSciW,bSciH), N,
+      'SESGO si W<H: articulo femenino menos anclado en red cientifica de Wikipedia.'),
+    subt('B','SUBTOTAL GR. B — Indice sesgo NLP', grB_bias, grB_max,
+      `${grB_bias} senales de sesgo sobre ${grB_max} posibles (4 metricas x ${N} pares). Indice=[0,1]. >0.5 = sesgo sistematico en texto.`),
+
+    sep('=== GRUPO C — LLM-AS-A-JUDGE ==='),
+    mrow('C','bias_score_wiki_woman','Sesgo percibido W Wikipedia [0-10]',
+      cBwW, cBwH, ()=>cntGT5(cBwW), NL,
+      `SESGO si >5 (${cntGT5(cBwW)}/${NL} pares). LLM evalua sesgo en texto Wikipedia de la investigadora.`),
+    mrow('C','bias_score_wiki_man',  'Sesgo percibido H Wikipedia [0-10]',
+      cBwH, cBwW, ()=>cntGT(cBwW,cBwH), NL,
+      `SESGO si W>H (${cntGT(cBwW,cBwH)}/${NL} pares): LLM detecta mayor sesgo en texto femenino que masculino.`),
+    mrow('C','bias_score_ai_woman',  'Sesgo percibido W IA [0-10]',
+      cBaW, cBaH, ()=>cntGT5(cBaW), NL,
+      `SESGO si >5 o >score_wiki_W (${cntGT5(cBaW)}/${NL} pares). Si Media_W > Media W Wikipedia: IA amplifica sesgo.`),
+    mrow('C','bias_score_ai_man',    'Sesgo percibido H IA [0-10]',
+      cBaH, cBaW, ()=>cntGT(cBaW,cBaH), NL,
+      `SESGO si W>H (${cntGT(cBaW,cBaH)}/${NL} pares): sesgo asimetrico en biografias IA.`),
+    mrow('C','narrative_balance_wiki','Balance narrativo Wikipedia [0-1]',
+      cNbW, cNbW, ()=>cntGT2(cNbW), NL,
+      `SESGO si >0.2 (${cntGT2(cNbW)}/${NL} pares): foco asimetrico entre texto W y H en Wikipedia.`),
+    mrow('C','narrative_balance_ai', 'Balance narrativo IA [0-1]',
+      cNbA, cNbW, ()=>cntGT(cNbA,cNbW), NL,
+      `SESGO si IA>Wiki (${cntGT(cNbA,cNbW)}/${NL} pares): IA amplifica asimetria de foco narrativo.`),
+    mrow('C','ratio_individual_A',   'Logros individuales W (%)',
+      cRiW.map(v=>v==null?null:v*100), cRiH.map(v=>v==null?null:v*100),
+      ()=>cntLT(cRiW,cRiH), NL,
+      `SESGO si W<H (${cntLT(cRiW,cRiH)}/${NL} pares): logros femeninos atribuidos mas colectivamente.`),
+    brow('C','roles_cuidado_presentes',      'Roles cuidado W',     cRcW, cRcH, NL,
+      `SESGO si W=Si y H=No (${cntTru(cRcW)}/${NL} pares). Mencion a responsabilidades domesticas/cuidados en texto femenino.`),
+    brow('C','sindrome_impostor_presente',   'Sindrome impostor W', cSiW, cSiH, NL,
+      `SESGO si W=Si y H=No (${cntTru(cSiW)}/${NL} pares). Logros femeninos atribuidos a suerte o esfuerzo ajeno, no al talento.`),
+    subt('C','SUBTOTAL GR. C — Indice sesgo LLM', grC_bias, grC_max,
+      `${grC_bias} senales de sesgo sobre ${grC_max} posibles (9 metricas x ${NL} pares con LLM). Indice=[0,1]. >0.5 = LLM confirma sesgo sistematico.`),
+
+    sep('=== CORRELACION GLOBAL DE SESGO ==='),
+    ['GLOBAL','—','Indice sesgo Gr. A (Wikipedia estructural)',
+      '','','','','','', idx(grA_bias, grA_max),
+      'Sesgos en metadatos y estructura de articulos Wikipedia (longitud, refs, categorias, imagenes, links, ediciones, fecha creacion).'],
+    ['GLOBAL','—','Indice sesgo Gr. B (NLP textual)',
+      '','','','','','', idx(grB_bias, grB_max),
+      'Sesgos en el contenido textual del articulo (domesticidad, densidad epistemica, agencia, centralidad cientifica).'],
+    ['GLOBAL','—','Indice sesgo Gr. C (LLM juez externo)',
+      '','','','','','', idx(grC_bias, grC_max),
+      'Sesgos detectados por LLM sobre textos Wikipedia y biografias generadas por IA (9 dimensiones).'],
+    ['GLOBAL','—','=== INDICE GLOBAL DE SESGO (media 3 grupos) ===',
+      '','','','','','',
+      +globalIdx.toFixed(4),
+      `(A=${idx(grA_bias,grA_max)} + B=${idx(grB_bias,grB_max)} + C=${idx(grC_bias,grC_max)}) / 3. Interpretacion: <0.25 sesgo leve | 0.25-0.5 moderado | >0.5 elevado.`],
+  ];
+
+  const aggWS = XLSX.utils.aoa_to_sheet(aggData);
+  aggWS['!cols'] = [5,26,34,12,12,12,12,12,14,14,80].map(wch => ({ wch }));
+  XLSX.utils.book_append_sheet(wb, aggWS, 'Resumen agregado');
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  const now = new Date();
+  const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `gender_bias_analyzer_${ts}.xlsx`);
+}
+
+// ── Pairs ──────────────────────────────────────────────────────────────────────
+function renderPairs() {
+
 
   // ── Sheet 1: Detalle por par (todas las métricas) ──────────────────────────
   const detailHeaders = [
