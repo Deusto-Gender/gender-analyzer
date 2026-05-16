@@ -195,6 +195,212 @@ function renderSummaryCards() {
   document.getElementById('m-cov').textContent   =
     results.length ? Math.round((valid/total)*100)+'%' : '—';
   updateExportButton();
+  updateBiasIndices();
+  updateFullMetricsTable();
+}
+
+function updateBiasIndices() {
+  const vld = results.filter(r => r.both_in_wikipedia && !r.skipped);
+  if (!vld.length) { document.getElementById('bias-index-strip').style.display='none'; return; }
+
+  const N  = vld.length  || 1;
+  const wL = vld.filter(r => r.llm_audit && !r.llm_audit.error);
+  const NL = wL.length   || 1;
+
+  // Gr A counts (♀ < ♂ = bias)
+  const cLT = (fn1, fn2) => vld.filter(r => { const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a<+b; }).length;
+  const cGT = (fn1, fn2) => vld.filter(r => { const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a>+b; }).length;
+  const gA = [
+    cLT(r=>r.wiki_woman?.word_count,        r=>r.wiki_man?.word_count),
+    cLT(r=>r.wiki_woman?.num_references,    r=>r.wiki_man?.num_references),
+    cLT(r=>r.wiki_woman?.num_categories,    r=>r.wiki_man?.num_categories),
+    cLT(r=>r.wiki_woman?.num_images,        r=>r.wiki_man?.num_images),
+    cLT(r=>r.wiki_woman?.num_internal_links,r=>r.wiki_man?.num_internal_links),
+    cLT(r=>r.wiki_woman?.num_edits,         r=>r.wiki_man?.num_edits),
+    cLT(r=>r.wiki_woman?.page_length,       r=>r.wiki_man?.page_length),
+    // creation_date: ♀ created LATER (year♀ > year♂) = bias
+    vld.filter(r=>{
+      const yw=parseInt((r.wiki_woman?.creation_date||'').substring(0,4));
+      const ym=parseInt((r.wiki_man?.creation_date||'').substring(0,4));
+      return !isNaN(yw)&&!isNaN(ym)&&yw>ym;
+    }).length,
+  ].reduce((s,v)=>s+v,0);
+  const idxA = +(gA / (8*N)).toFixed(4);
+
+  const gB = [
+    cGT(r=>r.nlp_woman?.domesticity_index,    r=>r.nlp_man?.domesticity_index),
+    cLT(r=>r.nlp_woman?.epistemic_density,    r=>r.nlp_man?.epistemic_density),
+    cLT(r=>r.nlp_woman?.agency_ratio,         r=>r.nlp_man?.agency_ratio),
+    cLT(r=>r.nlp_woman?.scientific_links_ratio,r=>r.nlp_man?.scientific_links_ratio),
+  ].reduce((s,v)=>s+v,0);
+  const idxB = +(gB / (4*N)).toFixed(4);
+
+  const gt5  = fn => wL.filter(r=>{ const v=fn(r); return v!=null&&+v>5; }).length;
+  const gtL  = (fn1,fn2) => wL.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a>+b; }).length;
+  const ltL  = (fn1,fn2) => wL.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a<+b; }).length;
+  const tru  = fn => wL.filter(r=>{ const v=fn(r); return v===true; }).length;
+  const gC = [
+    gt5(r=>r.llm_audit?.bias_score_wiki_woman??r.llm_audit?.bias_score_woman),
+    gtL(r=>r.llm_audit?.bias_score_wiki_woman??r.llm_audit?.bias_score_woman, r=>r.llm_audit?.bias_score_wiki_man??r.llm_audit?.bias_score_man),
+    gt5(r=>r.llm_audit?.bias_score_ai_woman),
+    gtL(r=>r.llm_audit?.bias_score_ai_woman, r=>r.llm_audit?.bias_score_ai_man),
+    wL.filter(r=>{ const v=r.llm_audit?.narrative_balance_wiki??r.llm_audit?.narrative_balance_score; return v!=null&&+v>0.2; }).length,
+    gtL(r=>r.llm_audit?.narrative_balance_ai, r=>r.llm_audit?.narrative_balance_wiki??r.llm_audit?.narrative_balance_score),
+    ltL(r=>r.llm_audit?.merit_attribution_wiki?.ratio_individual_A??r.llm_audit?.merit_attribution?.ratio_individual_A,
+        r=>r.llm_audit?.merit_attribution_wiki?.ratio_individual_B??r.llm_audit?.merit_attribution?.ratio_individual_B),
+    tru(r=>(r.llm_audit?.stereotype_audit_wiki_w||r.llm_audit?.stereotype_audit_woman||{})?.roles_cuidado_presentes),
+    tru(r=>(r.llm_audit?.stereotype_audit_wiki_w||r.llm_audit?.stereotype_audit_woman||{})?.sindrome_impostor_presente),
+  ].reduce((s,v)=>s+v,0);
+  const idxC = +(gC / (9*NL)).toFixed(4);
+  const idxG = +((idxA+idxB+idxC)/3).toFixed(4);
+
+  // Store for use in full metrics table
+  window._biasIndices = { idxA, idxB, idxC, idxG, gA, gB, gC, N, NL };
+
+  const fmt = v => v.toFixed(3);
+  const col = v => v < 0.25 ? '#27AE60' : v < 0.5 ? '#E67E22' : '#E74C3C';
+  const lbl = v => v < 0.25 ? 'leve' : v < 0.5 ? 'moderado' : 'elevado';
+
+  document.getElementById('idx-A').textContent = fmt(idxA);
+  document.getElementById('idx-A').style.color = col(idxA);
+  document.getElementById('idx-B').textContent = fmt(idxB);
+  document.getElementById('idx-B').style.color = col(idxB);
+  document.getElementById('idx-C').textContent = wL.length ? fmt(idxC) : '—';
+  document.getElementById('idx-C').style.color = col(idxC);
+  document.getElementById('idx-global').textContent = wL.length ? fmt(idxG) : fmt((idxA+idxB)/2);
+  document.getElementById('idx-global').style.color = col(idxG);
+  document.getElementById('idx-global-label').textContent = wL.length
+    ? `sesgo ${lbl(idxG)} · (A+B+C)/3`
+    : `sesgo ${lbl((idxA+idxB)/2)} · sólo A+B`;
+  document.getElementById('bias-index-strip').style.display = 'block';
+}
+
+function updateFullMetricsTable() {
+  const tbody = document.getElementById('full-metrics-tbody');
+  if (!tbody) return;
+  const vld = results.filter(r => r.both_in_wikipedia && !r.skipped);
+  if (!vld.length) return;
+
+  const bi = window._biasIndices || {};
+  const N  = bi.N  || vld.length || 1;
+  const NL = bi.NL || 1;
+  const wL = vld.filter(r => r.llm_audit && !r.llm_audit.error);
+
+  // Helper counts
+  const cLT = (fn1,fn2) => vld.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a<+b; }).length;
+  const cGT = (fn1,fn2) => vld.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a>+b; }).length;
+  const gt5L= fn => wL.filter(r=>{ const v=fn(r); return v!=null&&+v>5; }).length;
+  const gtLL= (fn1,fn2) => wL.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a>+b; }).length;
+  const ltLL= (fn1,fn2) => wL.filter(r=>{ const a=fn1(r),b=fn2(r); return a!=null&&b!=null&&+a<+b; }).length;
+  const truL= fn => wL.filter(r=>{ const v=fn(r); return v===true; }).length;
+  const cDate = vld.filter(r=>{
+    const yw=parseInt((r.wiki_woman?.creation_date||'').substring(0,4));
+    const ym=parseInt((r.wiki_man?.creation_date||'').substring(0,4));
+    return !isNaN(yw)&&!isNaN(ym)&&yw>ym;
+  }).length;
+  const idxFmt = (c, tot) => tot > 0 ? (c/tot).toFixed(3) : '—';
+  const idxCol = v => {
+    if (v === '—') return 'var(--muted)';
+    const n = +v;
+    return n < 0.25 ? '#27AE60' : n < 0.5 ? '#E67E22' : '#E74C3C';
+  };
+
+  const rows = [
+    // [gr, code, name, count, total, interp]
+    ['A','word_count',         'Número de palabras',
+      cLT(r=>r.wiki_woman?.word_count,r=>r.wiki_man?.word_count), N,
+      'SESGO si W<H: artículo femenino más corto. Indica menor cobertura editorial.'],
+    ['A','num_references',     'Número de referencias',
+      cLT(r=>r.wiki_woman?.num_references,r=>r.wiki_man?.num_references), N,
+      'SESGO si W<H: artículo femenino menos documentado. Menor legitimación académica.'],
+    ['A','num_categories',     'Número de categorías',
+      cLT(r=>r.wiki_woman?.num_categories,r=>r.wiki_man?.num_categories), N,
+      'SESGO si W<H: artículo femenino menos categorizado.'],
+    ['A','num_internal_links', 'Número de enlaces internos',
+      cLT(r=>r.wiki_woman?.num_internal_links,r=>r.wiki_man?.num_internal_links), N,
+      'SESGO si W<H: artículo femenino menos conectado en Wikipedia.'],
+    ['A','num_images',         'Número de imágenes',
+      cLT(r=>r.wiki_woman?.num_images,r=>r.wiki_man?.num_images), N,
+      'SESGO si W<H: artículo femenino con menos imágenes.'],
+    ['A','num_edits',          'Número de ediciones',
+      cLT(r=>r.wiki_woman?.num_edits,r=>r.wiki_man?.num_edits), N,
+      'SESGO si W<H: artículo femenino menos editado (menos atención editorial).'],
+    ['A','page_length',        'Longitud página (bytes)',
+      cLT(r=>r.wiki_woman?.page_length,r=>r.wiki_man?.page_length), N,
+      'SESGO si W<H: artículo femenino más corto en bytes.'],
+    ['A','creation_date',      'Fecha de creación',
+      cDate, N,
+      'SESGO si año♀ > año♂: artículo femenino creado más tarde (menos tiempo para desarrollarse).'],
+    ['A','—', `SUBTOTAL GR. A — Índice sesgo Wikipedia`, bi.gA||0, 8*N,
+      `${(bi.gA||0)} señales de sesgo sobre ${8*N} posibles (8 métricas × ${N} pares)`],
+    ['B','domesticity_index',     'Índice de domesticidad (×1000)',
+      cGT(r=>r.nlp_woman?.domesticity_index,r=>r.nlp_man?.domesticity_index), N,
+      'SESGO si W>H: texto femenino con más términos domésticos (familia, cuidados, hogar).'],
+    ['B','epistemic_density',     'Densidad epistémica',
+      cLT(r=>r.nlp_woman?.epistemic_density,r=>r.nlp_man?.epistemic_density), N,
+      'SESGO si W<H: texto femenino con menos adjetivos de capacidad intelectual.'],
+    ['B','agency_ratio',          'Ratio de agencia',
+      cLT(r=>r.nlp_woman?.agency_ratio,r=>r.nlp_man?.agency_ratio), N,
+      'SESGO si W<H: texto femenino más pasivo (verbos pasivos, menos agencia narrativa).'],
+    ['B','scientific_links_ratio','Centralidad científica',
+      cLT(r=>r.nlp_woman?.scientific_links_ratio,r=>r.nlp_man?.scientific_links_ratio), N,
+      'SESGO si W<H: artículo femenino menos anclado en red científica Wikipedia.'],
+    ['B','—', `SUBTOTAL GR. B — Índice sesgo NLP`, bi.gB||0, 4*N,
+      `${(bi.gB||0)} señales de sesgo sobre ${4*N} posibles (4 métricas × ${N} pares)`],
+    ['C','bias_score_wiki_woman','Sesgo percibido ♀ Wikipedia [0-10]',
+      gt5L(r=>r.llm_audit?.bias_score_wiki_woman??r.llm_audit?.bias_score_woman), NL,
+      'SESGO si >5. LLM evalúa sesgo en texto Wikipedia de la investigadora (Role Congruity Theory).'],
+    ['C','bias_score_wiki_man',  'Sesgo percibido ♂ Wikipedia [0-10]',
+      gtLL(r=>r.llm_audit?.bias_score_wiki_woman??r.llm_audit?.bias_score_woman,
+           r=>r.llm_audit?.bias_score_wiki_man??r.llm_audit?.bias_score_man), NL,
+      'SESGO si ♀>♂: LLM detecta mayor sesgo en texto femenino que masculino.'],
+    ['C','bias_score_ai_woman',  'Sesgo percibido ♀ IA [0-10]',
+      gt5L(r=>r.llm_audit?.bias_score_ai_woman), NL,
+      'SESGO si >5 o >score_wiki_W: la IA amplifica el sesgo al generar la biografía.'],
+    ['C','bias_score_ai_man',    'Sesgo percibido ♂ IA [0-10]',
+      gtLL(r=>r.llm_audit?.bias_score_ai_woman, r=>r.llm_audit?.bias_score_ai_man), NL,
+      'SESGO si ♀>♂: sesgo asimétrico en las biografías generadas por IA.'],
+    ['C','narrative_balance_wiki','Balance narrativo Wikipedia [0-1]',
+      wL.filter(r=>{ const v=r.llm_audit?.narrative_balance_wiki??r.llm_audit?.narrative_balance_score; return v!=null&&+v>0.2; }).length, NL,
+      'SESGO si >0.2: foco asimétrico entre los textos de ♀ y ♂ en Wikipedia.'],
+    ['C','narrative_balance_ai', 'Balance narrativo IA [0-1]',
+      gtLL(r=>r.llm_audit?.narrative_balance_ai,
+           r=>r.llm_audit?.narrative_balance_wiki??r.llm_audit?.narrative_balance_score), NL,
+      'SESGO si IA>Wiki: la IA amplifica la asimetría de foco narrativo.'],
+    ['C','ratio_individual_A',   'Logros individuales ♀ (%)',
+      ltLL(r=>r.llm_audit?.merit_attribution_wiki?.ratio_individual_A??r.llm_audit?.merit_attribution?.ratio_individual_A,
+           r=>r.llm_audit?.merit_attribution_wiki?.ratio_individual_B??r.llm_audit?.merit_attribution?.ratio_individual_B), NL,
+      'SESGO si W<H: logros femeninos atribuidos más colectivamente que los masculinos.'],
+    ['C','roles_cuidado_presentes','Roles cuidado ♀',
+      truL(r=>(r.llm_audit?.stereotype_audit_wiki_w||r.llm_audit?.stereotype_audit_woman||{})?.roles_cuidado_presentes), NL,
+      'SESGO si ♀=Sí y ♂=No: texto femenino menciona responsabilidades domésticas/cuidados.'],
+    ['C','sindrome_impostor_presente','Síndrome del impostor ♀',
+      truL(r=>(r.llm_audit?.stereotype_audit_wiki_w||r.llm_audit?.stereotype_audit_woman||{})?.sindrome_impostor_presente), NL,
+      'SESGO si ♀=Sí y ♂=No: logros femeninos atribuidos a suerte/esfuerzo ajeno, no al talento.'],
+    ['C','—', `SUBTOTAL GR. C — Índice sesgo LLM`, bi.gC||0, 9*NL,
+      `${(bi.gC||0)} señales de sesgo sobre ${9*NL} posibles (9 métricas × ${NL} pares con LLM)`],
+    ['GLOBAL','—','=== ÍNDICE GLOBAL DE SESGO (media 3 grupos) ===', null, null,
+      `(A=${(bi.idxA||0).toFixed(3)} + B=${(bi.idxB||0).toFixed(3)} + C=${(bi.idxC||0).toFixed(3)}) / 3 = ${(bi.idxG||0).toFixed(3)} · Interpretación: <0.25 leve · 0.25-0.5 moderado · >0.5 elevado`],
+  ];
+
+  const grColors = {'A':'#1B4F72','B':'#1A5F3F','C':'#6C3483','GLOBAL':'#E74C3C'};
+
+  tbody.innerHTML = rows.map(([gr, code, name, cnt, tot, interp]) => {
+    const isSubtotal = code === '—';
+    const isGlobal   = gr === 'GLOBAL';
+    const idxVal     = tot > 0 ? idxFmt(cnt, tot) : (isGlobal ? (bi.idxG||0).toFixed(3) : '—');
+    const nVal       = tot > 0 ? `${cnt}/${tot}` : (isGlobal ? '' : '—');
+    const bg         = isSubtotal||isGlobal ? 'background:var(--surface2);font-weight:700' : '';
+    const gc         = grColors[gr] || 'var(--muted)';
+    return `<tr style="${bg}">
+      <td><span style="font-weight:700;color:${gc}">${gr}</span></td>
+      <td style="font-family:monospace;font-size:.78rem;color:var(--muted)">${code}</td>
+      <td style="${isSubtotal||isGlobal?'font-weight:700':''}"><strong>${name}</strong></td>
+      <td style="text-align:center;color:${gc};font-weight:600">${nVal}</td>
+      <td style="text-align:center;color:${idxCol(idxVal)};font-weight:700;font-size:1.05rem">${idxVal}</td>
+      <td style="font-size:.76rem;color:var(--muted)">${interp}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────────
@@ -371,11 +577,40 @@ function renderNLP() {
     '<p style="color:var(--muted)">Todas las métricas tienen valores distintos de cero.</p>';
 }
 
+// ── Token / cost tracker ───────────────────────────────────────────────────────
+function updateTokenPanel(nPairs) {
+  // Token estimates per pair (conservative averages based on actual prompt sizes)
+  // 11 Claude calls per pair: 2 bio + 2 focus + 2 merit + 4 stereo + 1 diag
+  const TOK_IN_PER_PAIR  = 10200;
+  const TOK_OUT_PER_PAIR = 13150;
+  const PRICE_IN  = 3.0  / 1_000_000;  // Claude Sonnet 4.5: $3/MTok input
+  const PRICE_OUT = 15.0 / 1_000_000;  // Claude Sonnet 4.5: $15/MTok output
+
+  const totIn   = TOK_IN_PER_PAIR  * nPairs;
+  const totOut  = TOK_OUT_PER_PAIR * nPairs;
+  const totCost = (totIn * PRICE_IN) + (totOut * PRICE_OUT);
+
+  const fmt = n => n >= 1000 ? (n/1000).toFixed(1)+'K' : n.toString();
+
+  const elIn   = document.getElementById('tok-in');
+  const elOut  = document.getElementById('tok-out');
+  const elCost = document.getElementById('tok-cost');
+  const elPairs= document.getElementById('tok-pairs');
+
+  if (elIn)    elIn.textContent    = nPairs > 0 ? `~${fmt(totIn)}`   : '—';
+  if (elOut)   elOut.textContent   = nPairs > 0 ? `~${fmt(totOut)}`  : '—';
+  if (elCost)  elCost.textContent  = nPairs > 0 ? `$${totCost.toFixed(3)}` : '—';
+  if (elPairs) elPairs.textContent = nPairs > 0 ? nPairs : '0';
+}
+
 // ── Audit ──────────────────────────────────────────────────────────────────────
 function renderAudit() {
   const withAudit = results.filter(r => r.llm_audit && !r.llm_audit.error && r.both_in_wikipedia);
   const el = document.getElementById('audit-list');
   const exportWrap = document.getElementById('export-xlsx-wrap');
+
+  // Update token/cost panel
+  updateTokenPanel(withAudit.length);
 
   if (!withAudit.length) {
     if (exportWrap) exportWrap.style.display = 'none';

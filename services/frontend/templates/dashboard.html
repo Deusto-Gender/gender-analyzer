@@ -142,6 +142,36 @@
     <div class="metric-card"><div class="metric-val" style="color:var(--warn)" id="m-skip">—</div><div class="metric-lbl">Pares omitidos</div></div>
     <div class="metric-card"><div class="metric-val" style="color:var(--primary)" id="m-cov">—</div><div class="metric-lbl">Cobertura Wiki ES</div></div>
   </div>
+
+  <!-- Bias index summary strip -->
+  <div id="bias-index-strip" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px">
+    <div style="font-weight:700;font-size:.88rem;margin-bottom:10px;color:var(--primary)">🎯 Índices de sesgo por grupo — <span style="font-weight:400;color:var(--muted)">proporción de pares con señal de sesgo activa [0-1]</span></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch">
+      <div style="flex:1;min-width:160px;background:var(--surface);border-radius:8px;padding:12px 16px;border-left:4px solid #1B4F72">
+        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Grupo A — Wikipedia</div>
+        <div id="idx-A" style="font-size:1.6rem;font-weight:800;color:#1B4F72">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:3px">metadatos y estructura</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:var(--surface);border-radius:8px;padding:12px 16px;border-left:4px solid #1A5F3F">
+        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Grupo B — NLP</div>
+        <div id="idx-B" style="font-size:1.6rem;font-weight:800;color:#1A5F3F">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:3px">análisis textual spaCy</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:var(--surface);border-radius:8px;padding:12px 16px;border-left:4px solid #6C3483">
+        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Grupo C — LLM</div>
+        <div id="idx-C" style="font-size:1.6rem;font-weight:800;color:#6C3483">—</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:3px">LLM-as-a-Judge</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:var(--surface);border-radius:8px;padding:12px 16px;border-left:4px solid var(--accent,#E74C3C);border:2px solid var(--accent,#E74C3C)">
+        <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Índice Global</div>
+        <div id="idx-global" style="font-size:1.6rem;font-weight:800;color:var(--accent,#E74C3C)">—</div>
+        <div id="idx-global-label" style="font-size:.7rem;color:var(--muted);margin-top:3px">media (A+B+C)/3</div>
+      </div>
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-top:10px">
+      <strong>Escala:</strong> &lt;0.25 sesgo leve &nbsp;·&nbsp; 0.25–0.50 sesgo moderado &nbsp;·&nbsp; &gt;0.50 sesgo elevado
+    </div>
+  </div>
   <div class="grid2">
     <div class="card">
       <div class="card-title">Longitud media (palabras)
@@ -213,6 +243,65 @@
       <tbody id="agg-tbody"></tbody>
     </table>
   </div>
+
+  <hr class="section-sep">
+  <div class="agg-title">📐 Cómo se calcula el Sesgo LLM (0–10)</div>
+  <div class="card" style="margin-bottom:16px">
+    <p style="font-size:.84rem;line-height:1.75;color:var(--muted)">
+      La puntuación de <strong>Sesgo Percibido (0–10)</strong> es estimada por Claude Sonnet 4.5 actuando como juez sociológico experto según la
+      <strong>Role Congruity Theory</strong> (Eagly &amp; Karau, 2002). El modelo recibe el texto de la biografía y evalúa
+      la presencia de los siguientes marcadores:
+    </p>
+    <ul style="font-size:.82rem;color:var(--muted);line-height:2;margin:8px 0 8px 20px">
+      <li>Referencias a <strong>apariencia física</strong> o vida personal de la persona</li>
+      <li>Presencia de <strong>roles de cuidado</strong> (familia, hijos, conciliación)</li>
+      <li><strong>Síndrome del impostor</strong>: logros atribuidos a la suerte, al esfuerzo colectivo o a circunstancias externas, no al talento propio</li>
+      <li>Uso de <strong>lenguaje minimizador</strong> ("a pesar de ser mujer", "aunque…")</li>
+      <li><strong>Atribución pasiva</strong> de logros ("fue nombrada", "participó en") vs. atribución activa ("fundó", "lideró", "creó")</li>
+    </ul>
+    <p style="font-size:.82rem;color:var(--muted);line-height:1.75">
+      El modelo asigna un número de 0 a 10 justificando su decisión y devuelve un JSON estructurado.
+      La puntuación <strong>no es una fórmula determinista</strong> sino una estimación cualitativa calibrada con ejemplos en el system prompt.
+      Se calcula por separado para la mujer y el hombre de cada par, tanto sobre los textos de Wikipedia como sobre las biografías generadas por IA sin instrucciones de neutralidad.
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      <div style="flex:1;min-width:130px;background:var(--surface2);border-radius:7px;padding:10px 14px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:1.4rem;font-weight:800;color:var(--success)">0–3</div>
+        <div style="font-size:.72rem;color:var(--muted)">Sin sesgo o leve</div>
+      </div>
+      <div style="flex:1;min-width:130px;background:var(--surface2);border-radius:7px;padding:10px 14px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:1.4rem;font-weight:800;color:var(--warn)">4–6</div>
+        <div style="font-size:.72rem;color:var(--muted)">Sesgo moderado</div>
+      </div>
+      <div style="flex:1;min-width:130px;background:var(--surface2);border-radius:7px;padding:10px 14px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:1.4rem;font-weight:800;color:var(--woman)">7–10</div>
+        <div style="font-size:.72rem;color:var(--muted)">Sesgo elevado</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-sep">
+  <div class="agg-title">📋 Tabla completa de métricas (Resumen Agregado)</div>
+  <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">
+    Columnas A–C: identificador, Columnas I–K: señales de sesgo y su interpretación.
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table id="full-metrics-table">
+      <thead>
+        <tr>
+          <th style="width:40px">Gr.</th>
+          <th style="width:180px">Código API</th>
+          <th>Nombre de la métrica</th>
+          <th style="width:120px">N pares sesgo</th>
+          <th style="width:100px">Índice [0-1]</th>
+          <th>Interpretación — ¿sesgo detectado?</th>
+        </tr>
+      </thead>
+      <tbody id="full-metrics-tbody">
+        <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">Ejecuta el análisis para ver resultados.</td></tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 </div>
 
@@ -254,6 +343,70 @@
 <div class="container">
   <div class="agg-title">🤖 Auditoría LLM-as-a-Judge</div>
   <div class="alert alert-warn">Requiere ANTHROPIC_API_KEY. Las biografías IA se generan <strong>sin instrucciones de neutralidad</strong> para estudiar el sesgo por defecto del modelo.</div>
+
+  <!-- Token / cost panel -->
+  <div id="token-panel" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:18px">
+    <div style="font-weight:700;font-size:.92rem;margin-bottom:10px;color:var(--primary)">📊 Consumo de tokens y coste estimado</div>
+    <div class="grid4" style="gap:10px;margin-bottom:12px">
+      <div style="background:var(--surface);border-radius:8px;padding:10px 14px;border:1px solid var(--border)">
+        <div id="tok-in"  style="font-size:1.3rem;font-weight:700;color:var(--woman)">—</div>
+        <div style="font-size:.72rem;color:var(--muted)">Tokens entrada (est.)</div>
+      </div>
+      <div style="background:var(--surface);border-radius:8px;padding:10px 14px;border:1px solid var(--border)">
+        <div id="tok-out" style="font-size:1.3rem;font-weight:700;color:var(--man)">—</div>
+        <div style="font-size:.72rem;color:var(--muted)">Tokens salida (est.)</div>
+      </div>
+      <div style="background:var(--surface);border-radius:8px;padding:10px 14px;border:1px solid var(--border)">
+        <div id="tok-cost" style="font-size:1.3rem;font-weight:700;color:var(--success)">—</div>
+        <div style="font-size:.72rem;color:var(--muted)">Coste USD (est.)</div>
+      </div>
+      <div style="background:var(--surface);border-radius:8px;padding:10px 14px;border:1px solid var(--border)">
+        <div id="tok-pairs" style="font-size:1.3rem;font-weight:700;color:var(--primary)">—</div>
+        <div style="font-size:.72rem;color:var(--muted)">Pares auditados</div>
+      </div>
+    </div>
+    <details style="font-size:.78rem;color:var(--muted)">
+      <summary style="cursor:pointer;color:var(--primary);font-weight:600">ℹ️ Desglose por llamada y alternativas de reducción</summary>
+      <div style="margin-top:10px;line-height:1.8">
+        <strong>Llamadas a Claude Sonnet 4.5 por par (11 llamadas, 2 etapas paralelas + 1 diagnóstico):</strong>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:.75rem">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:4px 8px">Llamada</th>
+            <th style="text-align:right;padding:4px 8px">Entrada</th>
+            <th style="text-align:right;padding:4px 8px">Salida</th>
+            <th style="text-align:right;padding:4px 8px">Coste/par</th>
+          </tr></thead>
+          <tbody style="color:var(--muted)">
+            <tr><td style="padding:3px 8px">Bio IA mujer + hombre (×2)</td><td style="text-align:right">400</td><td style="text-align:right">700</td><td style="text-align:right">$0.012</td></tr>
+            <tr><td style="padding:3px 8px">Análisis foco narrativo Wiki</td><td style="text-align:right">1,800</td><td style="text-align:right">1,500</td><td style="text-align:right">$0.028</td></tr>
+            <tr><td style="padding:3px 8px">Atribución mérito Wiki</td><td style="text-align:right">1,800</td><td style="text-align:right">1,500</td><td style="text-align:right">$0.028</td></tr>
+            <tr><td style="padding:3px 8px">Auditoría estereotipos Wiki (×2)</td><td style="text-align:right">1,800</td><td style="text-align:right">3,000</td><td style="text-align:right">$0.051</td></tr>
+            <tr><td style="padding:3px 8px">Análisis foco IA</td><td style="text-align:right">600</td><td style="text-align:right">1,500</td><td style="text-align:right">$0.025</td></tr>
+            <tr><td style="padding:3px 8px">Atribución mérito IA</td><td style="text-align:right">600</td><td style="text-align:right">1,500</td><td style="text-align:right">$0.025</td></tr>
+            <tr><td style="padding:3px 8px">Auditoría estereotipos IA (×2)</td><td style="text-align:right">700</td><td style="text-align:right">3,000</td><td style="text-align:right">$0.046</td></tr>
+            <tr><td style="padding:3px 8px">Párrafo diagnóstico</td><td style="text-align:right">2,500</td><td style="text-align:right">450</td><td style="text-align:right">$0.014</td></tr>
+            <tr style="border-top:1px solid var(--border);font-weight:700;color:var(--text)"><td style="padding:4px 8px">TOTAL / par</td><td style="text-align:right">~10,200</td><td style="text-align:right">~13,150</td><td style="text-align:right">$0.23</td></tr>
+          </tbody>
+        </table>
+        <strong>💡 Opciones para reducir el consumo de tokens:</strong><br>
+        <strong>1. Fusionar los 3 prompts de auditoría en uno solo</strong> — actualmente foco, mérito y estereotipos son llamadas separadas. Un único prompt con las 3 tareas a la vez reduciría las llamadas de 11 a 5 por par (~55% menos de coste).<br>
+        <strong>2. Eliminar la etapa IA</strong> — auditar sólo textos Wikipedia y suprimir la generación de biografías IA ahorraría ~40% de tokens (las 5 llamadas de Stage 2 + 2 bios).<br>
+        <strong>3. Truncar los textos de entrada</strong> — los artículos de Wikipedia se pasan completos. Limitar a 800 tokens de entrada por texto reduciría tokens de entrada un ~30%.<br>
+        <strong>4. Usar Claude Haiku 3</strong> — $0.25/MTok entrada y $1.25/MTok salida vs $3/$15. Coste total ~12× menor por par ($0.019 vs $0.23), con menor calidad de razonamiento.<br>
+        <strong>5. LLM local con llama.cpp</strong> — ver sección siguiente.
+        <br><br>
+        <strong>🖥️ Alternativa local: llama.cpp en Intel Ultra 7 (32 GB RAM, sin GPU)</strong><br>
+        El Intel Core Ultra 7 dispone de NPU integrada y 32 GB de RAM compartida. El modelo recomendado es <strong>Mistral-7B-Instruct-v0.3-Q4_K_M</strong> (≈4.1 GB en GGUF Q4) o <strong>Llama-3.1-8B-Instruct-Q4_K_M</strong> (≈4.7 GB), que caben en RAM con espacio para el sistema operativo y los 5 contenedores Docker.<br>
+        Velocidad estimada en CPU pura: <strong>8–15 tok/s</strong> para un 7B Q4 (vs ~80 tok/s de la API). Con 13,150 tokens de salida por par, cada par tardaría ~15–27 minutos vs ~2 minutos con la API. Para los 12 pares: 3–5 horas totales.<br>
+        <strong>Pasos para integrar llama.cpp:</strong><br>
+        1. Añadir servicio <code>llama-server</code> al docker-compose.yml usando la imagen <code>ghcr.io/ggerganov/llama.cpp:server</code>.<br>
+        2. Montar el modelo GGUF en <code>/models/</code> y exponer el endpoint OpenAI-compatible en el puerto 8080.<br>
+        3. En <code>llm-auditor/main.py</code>, cambiar <code>API_URL</code> a <code>http://llama-server:8080/v1/chat/completions</code> y usar el cliente OpenAI con <code>base_url</code> local.<br>
+        4. El coste pasaría a ser <strong>$0 por llamada</strong> (sólo electricidad), eliminando el gasto en API.
+      </div>
+    </details>
+  </div>
+
   <div id="audit-list"><div class="loading" style="color:var(--muted)">Sin resultados LLM todavía.</div></div>
   <div id="export-xlsx-wrap" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
